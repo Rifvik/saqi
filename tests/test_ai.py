@@ -325,6 +325,7 @@ class VercelHandlersTests(unittest.TestCase):
 
     def test_vercel_handlers_and_config_contract(self):
         cfg = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
+        self.assertIsNone(cfg.get("framework"))
         self.assertEqual(cfg["outputDirectory"], "dist")
         self.assertIn("api/**/*.py", cfg["functions"])
 

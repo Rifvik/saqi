@@ -3,8 +3,9 @@
 .env.*
 !.env.example
 
-# Python / build
+# Python / build / Vercel
 dist/
+.vercel/
 __pycache__/
 *.pyc
 .venv/
