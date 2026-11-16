@@ -57,6 +57,14 @@ const SOILS = {
   sandyloam: { name: 'Sandy loam', fc: 20, wp: 9 },
 };
 
+/* Subsurface drainage / water-table suitability: limits safe leaching fraction (LF).
+ * If excess water cannot drain below roots, extra leaching causes waterlogging & salt retention. */
+const DRAINAGE = {
+  good:     { name: 'Good drainage (deep sand, water table > 2 m)', maxLF: 0.45 },
+  moderate: { name: 'Moderate drainage (slow subsoil / clay lens)', maxLF: 0.20 },
+  poor:     { name: 'Poor drainage / high water table (< 1 m)',    maxLF: 0.05 },
+};
+
 /* Worker voice-note languages. Many Gulf farm workers speak Urdu, Hindi, Bengali or Arabic. */
 const LANGS = {
   en: { name: 'English', bcp: 'en-US', dir: 'ltr' },

@@ -286,27 +286,28 @@
       <button class="btn sm" id="jumpVoice">🔊 Send SMS / Audio Plan</button>
     </div>
   </div>
+  <div id="dataConfidence" class="conf-bar"></div>
   <div class="forecast" id="forecast"></div>
   <div style="height:1rem"></div>
   <div id="alerts"></div>
   <div class="grid g2" id="decisions"></div>
 
   <div class="card">
-    <h3>Saqi vs. the usual habit — next 7 days</h3>
-    <p class="muted">The habit is a fixed number of minutes per day (set in <em>My farm</em>). Saqi changes the amount every day using the weather, crop stage, water salinity and irrigation system.</p>
+    <h3>Saqi vs. Weather-Only vs. Fixed Habit — next 7 days</h3>
+    <p class="muted">Comparing against two baselines: (1) a <b>weather-only (ET₀ × Kc)</b> schedule with no salt management, and (2) the grower's <b>fixed daily habit</b>. This isolates both weather savings and the yield-protecting value of salt flushing.</p>
     <div class="kpi" id="compareKpi"></div>
     <div class="tablewrap" style="margin-top:.9rem"><table id="compareTable"></table></div>
     <div id="compareChart" style="margin-top:.9rem"></div>
   </div>
 
   <div class="card" id="voiceBox">
-    <h3>🔊 Voice note for the farm worker</h3>
-    <p class="muted">The owner decides, the worker acts. The worker may not read Arabic or English, so each instruction can be played aloud or sent as one short WhatsApp/SMS message (works on a basic connection).</p>
+    <h3>🔊 Voice note &amp; SMS / WhatsApp message preview</h3>
+    <p class="muted">The owner decides, the worker acts. Preview the message below, play it aloud on the phone, or open your phone's WhatsApp/SMS composer. <em>Note: SMS is a preview — automated push delivery requires an SMS gateway and sender-side connectivity.</em></p>
     <div class="row" style="margin-bottom:.5rem">
       <select id="voiceLang" style="max-width:220px"></select>
       <button class="btn sm" id="playAll">▶ Play all</button>
-      <a class="btn sm alt" id="waLink" target="_blank" rel="noopener">WhatsApp</a>
-      <a class="btn sm ghost" id="smsLink">SMS</a>
+      <a class="btn sm alt" id="waLink" target="_blank" rel="noopener">WhatsApp Preview</a>
+      <a class="btn sm ghost" id="smsLink">SMS Preview</a>
       <button class="btn sm ghost" id="copyVoice">Copy</button>
     </div>
     <div id="voiceLines"></div>
@@ -374,17 +375,27 @@
   </div>
 
   <div class="card">
-    <h3>Water and alerts</h3>
+    <h3>Water, drainage &amp; data provenance</h3>
     <div class="grid g3">
-      <div class="field"><label>Irrigation water salinity, EC (dS/m)</label><input type="number" step="0.1" min="0" data-bind="water.ec"></div>
-      <div class="field"><label>Water cost (AED per m³: pumping + desal share)</label><input type="number" step="0.1" min="0" data-bind="water.cost"></div>
+      <div class="field"><label>Irrigation water salinity, ECw (dS/m)</label><input type="number" step="0.1" min="0" data-bind="water.ec"></div>
+      <div class="field"><label>Water EC source</label>
+        <select data-bind="water.source">
+          <option value="measured (EC pen)">Measured (pocket EC pen)</option>
+          <option value="lab water test">Lab water test</option>
+          <option value="estimated / regional">Estimated / regional typical</option>
+        </select>
+      </div>
+      <div class="field"><label>Water EC last tested (date)</label><input type="date" data-bind="water.tested"></div>
+      <div class="field"><label>Subsurface drainage / water table</label><select data-bind="drainage" id="fmDrainage"></select></div>
+      <div class="field"><label>Water cost (AED/m³)</label><input type="number" step="0.1" min="0" data-bind="water.cost"></div>
       <div class="field"><label>Heat alert at max temp (°C)</label><input type="number" step="1" data-bind="heatThreshold"></div>
-      <div class="field"><label>Start watering after</label><input type="time" data-bind="startTime"></div>
+      <div class="field"><label>Start watering after (HH:MM)</label><input type="time" data-bind="startTime"></div>
     </div>
-    <p class="muted">No EC meter? A pocket EC pen costs ≈ 40 AED. Typical UAE groundwater is 2–15 dS/m; desalinated water is &lt; 1 dS/m.</p>
+    <p class="muted">Leaching only removes salt when excess water can drain below the root zone. Under poor drainage or a shallow water table, flushing caps out and causes waterlogging.</p>
   </div>
   <div class="card">
-    <h3>Blocks / valves</h3>
+    <h3>Blocks / valves (total block flow, with units)</h3>
+    <p class="muted">Runtimes use <b>total block flow (m³/h)</b> — never a single emitter's L/h alone. Choose <i>Direct m³/h</i> (flow meter) or <i>Emitters (L/h × count)</i> to auto-compute block flow.</p>
     <div class="tablewrap"><table id="blockTable"></table></div>
     <div class="row" style="margin-top:.6rem">
       <button class="btn sm" id="addBlock">+ Add block</button>
@@ -453,15 +464,16 @@
 
 <!-- PLANNER -->
 <section class="tab" id="planner">
-  <h2>What to plant: profit per cubic metre of water</h2>
-  <p class="lead">Crops are often picked by habit. Saqi ranks crops by what they earn per m³ of <em>your</em> water at <em>your</em> salinity, including flushing water, and checks if your well can keep up on the hottest day.</p>
+  <h2>Crop suitability estimate — based on modeled root-zone salinity</h2>
+  <p class="lead">FAO-29 Maas–Hoffman tolerances apply to <b>modeled root-zone soil salinity (ECe)</b>, not raw water salinity (ECw) alone. Saqi estimates steady-state ECe from water ECw, leaching fraction, and drainage capacity. Values below are <b>estimates</b>, not guaranteed crop yields.</p>
   <div class="card">
     <div class="grid g3">
-      <div class="field"><label>Water EC (dS/m)</label><input type="number" step="0.1" data-bind="water.ec"></div>
+      <div class="field"><label>Water ECw (dS/m)</label><input type="number" step="0.1" data-bind="water.ec"></div>
+      <div class="field"><label>Subsurface drainage</label><select data-bind="drainage" id="plDrainage"></select></div>
       <div class="field"><label>Water cost (AED/m³)</label><input type="number" step="0.1" data-bind="water.cost"></div>
       <div class="field"><label>Irrigation system</label><select data-bind="planner.system" id="plSystem"></select></div>
-      <div class="field"><label>Water available per hectare (m³/day)</label><input type="number" step="1" data-bind="planner.avail"></div>
-      <div class="field"><label>What you grow now (habit)</label><select data-bind="planner.current" id="plCurrent"></select></div>
+      <div class="field"><label>Water available (m³/ha/day)</label><input type="number" step="1" data-bind="planner.avail"></div>
+      <div class="field"><label>Current crop / habit</label><select data-bind="planner.current" id="plCurrent"></select></div>
     </div>
   </div>
   <div class="card"><div class="tablewrap"><table id="plannerTable"></table></div><p class="muted" id="plannerNote"></p></div>
@@ -574,8 +586,8 @@
       <h3>Desert Rules</h3>
       <div class="engine-steps" style="margin-top:.9rem">
         <div class="step"><span class="step-num">💧</span><div><b>Saves water:</b> Exact FAO-56 crop need + FAO-29 salt flush, night scheduling, leak/clog alerts &amp; water sharing.</div></div>
-        <div class="step"><span class="step-num">📡</span><div><b>Offline-first:</b> ~2 KB forecast cached on device; Hargreaves climate backup works with zero internet.</div></div>
-        <div class="step"><span class="step-num">⚡</span><div><b>Zero friction:</b> One runtime per valve + one tap to play or send via WhatsApp/SMS.</div></div>
+        <div class="step"><span class="step-num">📡</span><div><b>Resilient caching:</b> Weather &amp; farm state are cached on the client to survive API outages; a fully offline native mobile install &amp; live SMS gateway are next deployment steps.</div></div>
+        <div class="step"><span class="step-num">⚡</span><div><b>Zero friction:</b> One runtime per valve + voice &amp; SMS preview ready to copy or share.</div></div>
         <div class="step"><span class="step-num">🪙</span><div><b>Affordable:</b> Free web app (&lt; 100 KB), no subscription, no mandatory sensors.</div></div>
       </div>
     </div>

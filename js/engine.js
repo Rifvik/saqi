@@ -62,36 +62,80 @@ const Engine = (() => {
 
   const MAX_LR = 0.5;
 
-  /* Daily irrigation decision for one block. block.area in ha, block.flow in m³/h. */
-  function blockDecision(block, crop, wx, ecw, preHeat = false) {
+  function maxDrainLF(drainage = 'good') {
+    if (typeof DRAINAGE !== 'undefined' && DRAINAGE[drainage]) return DRAINAGE[drainage].maxLF;
+    return drainage === 'poor' ? 0.05 : drainage === 'moderate' ? 0.20 : 0.45;
+  }
+
+  /* Total block flow (m³/h): supports either emitter flow (L/h) × count OR direct block flow (m³/h). */
+  function resolveBlockFlow(block) {
+    if (block.flowMode === 'emitters' && block.emitterLph > 0 && block.emitterCount > 0) {
+      return +(block.emitterLph * block.emitterCount / 1000).toFixed(3);
+    }
+    return +block.flow || 0;
+  }
+
+  /* Daily irrigation decision for one block. block.area in ha, flow in m³/h (block total, never per-emitter). */
+  function blockDecision(block, crop, wx, ecw, preHeat = false, drainage = 'good') {
     const kc = kcAt(crop, block.day);
     const etc = kc * wx.et0;
     const effRain = wx.rain > 5 ? 0.8 * wx.rain : 0;
     const netNeed = Math.max(0, etc - effRain);
     const Ea = SYSTEMS[block.system].eff;
-    let LR = leachingReq(ecw, crop.ecThr);
-    let unsuitable = false;
-    if (LR === null || LR > MAX_LR) { unsuitable = true; LR = MAX_LR; }
+    const drainCap = Math.min(MAX_LR, maxDrainLF(drainage));
+    const rawLR = leachingReq(ecw, crop.ecThr);
+    let LR = rawLR, drainageBlocked = false;
+    if (LR === null || LR > drainCap) {
+      LR = drainCap;
+      drainageBlocked = (rawLR === null || rawLR > drainCap);
+    }
+    const modeledECe = rootzoneECe(ecw, Math.max(LR, 0.02));
+    const unsuitable = drainageBlocked && modeledECe > crop.ecThr * 1.15;
     const heatFactor = preHeat ? 1.10 : 1;
+    // Leaching fraction LR and system efficiency Ea are each applied exactly once (no double counting).
     const grossMm = (netNeed * heatFactor) / ((1 - LR) * Ea);
     const m3 = grossMm * block.area * 10; // 1 mm over 1 ha = 10 m³
-    const minutes = block.flow > 0 ? m3 / block.flow * 60 : 0;
-    return { kc, etc, effRain, netNeed, LR, unsuitable, preHeat: Boolean(preHeat), Ea, grossMm, m3, minutes, stage: stageName(crop, block.day) };
+    const flow = resolveBlockFlow(block);
+    const minutes = flow > 0 ? m3 / flow * 60 : 0;
+    return { kc, etc, effRain, netNeed, LR, rawLR, drainCap, drainageBlocked, modeledECe, unsuitable, preHeat: Boolean(preHeat), Ea, grossMm, m3, flow, minutes, stage: stageName(crop, block.day) };
   }
 
-  /* What happens to the crop if a given volume is applied over a period whose net crop need is etcMm.
-   * Combines water-stress loss (FAO-33 Ky) and salt build-up (leaching fraction → root-zone ECe → Maas-Hoffman). */
-  function evaluate(crop, block, m3, etcMm, ecw) {
+  /* Baseline #2: Weather-only irrigation (ET₀ × Kc / Ea) without salinity leaching management (LR = 0). */
+  function weatherOnlyDecision(block, crop, wx) {
+    const kc = kcAt(crop, block.day);
+    const etc = kc * wx.et0;
+    const effRain = wx.rain > 5 ? 0.8 * wx.rain : 0;
+    const netNeed = Math.max(0, etc - effRain);
     const Ea = SYSTEMS[block.system].eff;
+    const grossMm = netNeed / Ea;
+    const m3 = grossMm * block.area * 10;
+    const flow = resolveBlockFlow(block);
+    const minutes = flow > 0 ? m3 / flow * 60 : 0;
+    return { kc, etc, effRain, netNeed, Ea, grossMm, m3, flow, minutes };
+  }
+
+  /* Estimated root-zone water & salinity balance over a period whose net crop ET need is etcMm.
+   * Effective leaching is bounded by drainage capacity; excess beyond drainage causes waterlogging, not salt removal. */
+  function evaluate(crop, block, m3, etcMm, ecw, drainage = 'good', prevECe = null) {
+    const Ea = SYSTEMS[block.system].eff;
+    const drainCap = maxDrainLF(drainage);
     const inf = block.area > 0 ? m3 / (block.area * 10) * Ea : 0;
-    let lf, stress = 1;
-    if (etcMm <= 0) lf = 1;
-    else if (inf >= etcMm) lf = (inf - etcMm) / inf;
-    else { lf = 0.02; stress = clamp(1 - crop.ky * (1 - inf / etcMm), 0, 1); }
-    lf = Math.max(lf, 0.02);
-    const ece = rootzoneECe(ecw, lf);
+    let rawLF, stress = 1;
+    if (etcMm <= 0) rawLF = 1;
+    else if (inf >= etcMm) rawLF = (inf - etcMm) / inf;
+    else { rawLF = 0.02; stress = clamp(1 - crop.ky * (1 - inf / etcMm), 0, 1); }
+    const effLF = Math.max(Math.min(rawLF, drainCap), 0.02);
+    const waterlogged = etcMm > 0 && rawLF > drainCap + 0.04;
+    const ece = rootzoneECe(ecw, effLF);
     const ys = salinityYield(crop, ece);
-    return { inf, lf, ece, ys, stress, y: ys * stress, ratio: etcMm > 0 ? inf / etcMm : 1 };
+    const waterlogFactor = waterlogged ? clamp(1 - 0.35 * (rawLF - drainCap), 0.65, 1) : 1;
+    let saltTrend = 'stable';
+    if (drainage === 'poor' && ecw > 1.5) saltTrend = 'increasing';
+    else if (prevECe != null) {
+      if (ece > prevECe + 0.35) saltTrend = 'increasing';
+      else if (ece < prevECe - 0.35) saltTrend = 'flushing';
+    } else if (ece > crop.ecThr + 0.3) saltTrend = 'increasing';
+    return { inf, lf: effLF, rawLF, waterlogged, ece, ys, stress, y: ys * stress * waterlogFactor, saltTrend, ratio: etcMm > 0 ? inf / etcMm : 1 };
   }
 
   /* Flow-meter anomaly check: expected vs measured flow (m³/h). */
@@ -129,13 +173,16 @@ const Engine = (() => {
     return { curve, best, freshOnly: curve[0], wellOnly: curve[100] };
   }
 
-  /* Whole-season water and economics for a crop, using monthly climate normals. */
-  function seasonPlan(crop, ecw, Ea, et0Month) {
+  /* Whole-season water and crop suitability estimate (based on modeled root-zone ECe & drainage cap). */
+  function seasonPlan(crop, ecw, Ea, et0Month, drainage = 'good') {
     const L = seasonLength(crop);
-    let LR = leachingReq(ecw, crop.ecThr), capped = false;
-    if (LR === null || LR > 0.4) { LR = 0.4; capped = true; }
-    const ece = capped ? rootzoneECe(ecw, LR) : Math.min(crop.ecThr, rootzoneECe(ecw, Math.max(LR, 0.02)));
-    const ys = salinityYield(crop, ece);
+    const drainCap = Math.min(0.4, maxDrainLF(drainage));
+    const rawLR = leachingReq(ecw, crop.ecThr);
+    let LR = rawLR, capped = false;
+    if (LR === null || LR > drainCap) { LR = drainCap; capped = true; }
+    const modeledECe = capped ? rootzoneECe(ecw, Math.max(LR, 0.02)) : Math.min(crop.ecThr, rootzoneECe(ecw, Math.max(LR, 0.02)));
+    const ys = salinityYield(crop, modeledECe);
+    const suitability = (ys >= 0.90 && !(drainage === 'poor' && ecw > crop.ecThr)) ? 'Good' : ys >= 0.65 ? 'Marginal' : 'Poor';
     let tot = 0, peak = 0;
     const start = new Date(2026, crop.perennial ? 0 : crop.plantMonth - 1, 1);
     for (let d = 0; d < L; d++) {
@@ -143,7 +190,7 @@ const Engine = (() => {
       const g = kcAt(crop, d) * et0Month[dt.getMonth()] / ((1 - LR) * Ea) * 10;
       tot += g; if (g > peak) peak = g;
     }
-    return { L, LR, capped, ys, totM3: tot, peakM3: peak };
+    return { L, LR, drainCap, capped, modeledECe, ys, suitability, totM3: tot, peakM3: peak };
   }
 
   /* Share a well between neighbours: everyone keeps their right; unused rights are sold to those short. */
@@ -250,7 +297,8 @@ const Engine = (() => {
   }
 
   return { kcAt, stageName, seasonLength, hargreavesET0, leachingReq, rootzoneECe, salinityYield,
-           blockDecision, evaluate, flowCheck, dayLossPct, optimiseBlend, seasonPlan, shareWater,
-           HOME_SCENARIOS, decideZoneA, metersScale, rectPolygon, polygonStats, sum, clamp };
+           resolveBlockFlow, blockDecision, weatherOnlyDecision, evaluate, flowCheck, dayLossPct,
+           optimiseBlend, seasonPlan, shareWater, HOME_SCENARIOS, decideZoneA, metersScale,
+           rectPolygon, polygonStats, sum, clamp };
 })();
 if (typeof module !== 'undefined') module.exports = Engine;

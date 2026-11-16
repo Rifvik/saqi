@@ -81,14 +81,16 @@ function renderSensor() {
         ? `<div class="alert amber">⚠ <b>Salt is fooling the sensor.</b> It reads ${fmt(bias, 1)} points too wet, making the soil look over-saturated when it is actually only ${fmt(tru - refill, 1)} points above the refill point.</div>`
         : `<div class="alert green">The sensor's decision is right here. The salt error (${fmt(bias, 1)} points) does not change it.</div>`}
     ${tru < soil.fc ? `<p>To refill ${s.depth} cm of root zone: <b>${fmt(mm, 1)} mm = ${fmt(mm, 1)} litres per m²</b> (before salt flush and system losses).</p>` : ''}
-    <p class="muted">Model: capacitive sensors pick up the soil water's electrical conductivity as extra "wetness", and the error grows with salinity and water content: bias ≈ k × ECe × reading / 10. Sandy soil holds very little water (≈ ${soil.fc - soil.wp} points available), so a 2–3 point error is a big part of the plant's reserve.</p>`;
+    ${state.drainage === 'poor' ? `<div class="alert amber">⚠ <b>Poor drainage warning:</b> Excess leaching water cannot drain below roots here; avoid aggressive flushing until subsurface drainage improves.</div>` : ''}
+    <p class="muted">Model: capacitive sensors pick up the soil water's electrical conductivity as extra "wetness" (bias ≈ k × ECe × reading / 10). Root-zone ECe should be checked or modeled carefully rather than assumed equal to ECsw/2. Sandy soil holds very little water (≈ ${soil.fc - soil.wp} points available), so a 2–3 point error is a big part of the plant's reserve.</p>`;
 }
 
 /* ---------- Drip health ---------- */
 function renderDrip() {
   $('#dripCards').innerHTML = state.blocks.map((b, i) => {
-    const log = state.flowLog[i] || []; const f = Engine.flowCheck(log, b.flow);
-    const ratios = log.map(p => p.flow / b.flow);
+    const flow = Engine.resolveBlockFlow(b);
+    const log = state.flowLog[i] || []; const f = Engine.flowCheck(log, flow);
+    const ratios = log.map(p => p.flow / (flow || 1));
     const w = 320, h = 90, X = j => 8 + j / Math.max(1, ratios.length - 1) * (w - 16), Y = v => h - 8 - (Math.min(1.4, Math.max(0.5, v)) - 0.5) / 0.9 * (h - 16);
     const spark = `<svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px"><rect x="8" y="${Y(1.12)}" width="${w - 16}" height="${Y(0.88) - Y(1.12)}" fill="rgba(102,194,142,0.18)" rx="4"/>
       <line x1="8" x2="${w - 8}" y1="${Y(1)}" y2="${Y(1)}" stroke="var(--good)" stroke-dasharray="3 3"/>
@@ -97,8 +99,8 @@ function renderDrip() {
     const r = results[i]; const mins = r ? r.today.minutes : b.habitMin;
     let msg = '<span class="tag green">Healthy</span> Flow within ±12% of design.';
     if (f.status === 'clog') msg = `<span class="tag red">Clogging</span> Delivering ${pct(f.ratio)} of design flow, so plants get ≈ <b>${fmt((1 - f.ratio) * (r ? r.today.m3 : 0), 1)} m³ less</b> than planned today. Flush the laterals and acid-clean the emitters (salt and lime scale). Do <b>not</b> just run longer: the blocked drippers stay dry while the open ones get too much.`;
-    if (f.status === 'leak') msg = `<span class="tag red">Leak / burst</span> Flow is ${pct(f.ratio)} of design: ≈ <b>${fmt((f.ratio - 1) * b.flow * mins / 60, 1)} m³ lost</b> per irrigation. Walk the line and look for a burst lateral, a missing end cap or a broken fitting.`;
-    return `<div class="card"><div class="row" style="justify-content:space-between"><h3>Valve ${i + 1} · ${esc(b.name)}</h3><span class="muted">design ${b.flow} m³/h</span></div>
+    if (f.status === 'leak') msg = `<span class="tag red">Leak / burst</span> Flow is ${pct(f.ratio)} of design: ≈ <b>${fmt((f.ratio - 1) * flow * mins / 60, 1)} m³ lost</b> per irrigation. Walk the line and look for a burst lateral, a missing end cap or a broken fitting.`;
+    return `<div class="card"><div class="row" style="justify-content:space-between"><h3>Valve ${i + 1} · ${esc(b.name)}</h3><span class="muted">block flow ${fmt(flow, 1)} m³/h</span></div>
       ${spark}<div class="muted">Last 14 days, measured ÷ design flow (green band = normal)</div><p>${msg}</p>
       <div class="row"><input type="number" step="0.1" placeholder="Today's flow m³/h" data-flowin="${i}" style="max-width:180px"><button class="btn sm" data-flowbtn="${i}">Log reading</button></div></div>`;
   }).join('');
@@ -113,37 +115,43 @@ function renderDrip() {
   });
 }
 
-/* ---------- Crop planner ---------- */
+/* ---------- Crop suitability estimate (modeled root-zone salinity) ---------- */
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function renderPlanner() {
   const p = state.planner;
+  const drainage = state.drainage || 'good';
+  const plDr = $('#plDrainage'); if (plDr && !plDr.options.length) plDr.innerHTML = Object.entries(DRAINAGE).map(([k, d]) => `<option value="${k}">${d.name}</option>`).join('');
   const ss = $('#plSystem'); if (!ss.options.length) ss.innerHTML = Object.entries(SYSTEMS).map(([k, s]) => `<option value="${k}">${s.name}</option>`).join('');
   const sc = $('#plCurrent'); if (!sc.options.length) sc.innerHTML = Object.entries(CROPS).map(([k, c]) => `<option value="${k}">${c.name}</option>`).join('');
   const ecw = +state.water.ec, cost = +state.water.cost, Ea = SYSTEMS[p.system].eff;
   const rows = Object.entries(CROPS).map(([k, c]) => {
-    const sp = Engine.seasonPlan(c, ecw, Ea, CLIMATE.et0);
+    const sp = Engine.seasonPlan(c, ecw, Ea, CLIMATE.et0, drainage);
     const rev = c.yield * 1000 * c.price * sp.ys, wc = sp.totM3 * cost, profit = rev - wc;
     const endM = (c.plantMonth - 1 + Math.round(sp.L / 30.4) - 1) % 12;
     return { k, c, sp, rev, profit, perM3: profit / sp.totM3, kgM3: c.yield * 1000 * sp.ys / sp.totM3, feasible: sp.peakM3 <= p.avail,
       season: c.perennial ? 'all year' : `${MONTHS[c.plantMonth - 1]}–${MONTHS[endM]}` };
   }).sort((a, b) => (b.feasible - a.feasible) || (b.perM3 - a.perM3));
-  $('#plannerTable').innerHTML = `<tr><th>#</th><th>Crop</th><th>Season</th><th class="num">Water m³/ha</th><th class="num">Peak m³/ha/day</th><th class="num">Salt flush</th><th class="num">Yield</th><th class="num">Profit AED/ha</th><th class="num">AED per m³</th><th class="num">kg per m³</th></tr>` +
-    rows.map((r, i) => `<tr class="${r.k === p.current ? 'hl' : ''}"><td>${i + 1}</td><td>${r.c.name}${r.k === p.current ? ' <span class="tag amber">now</span>' : ''}${i === 0 ? ' <span class="tag green">best</span>' : ''}</td><td>${r.season}</td>
+  const suitTag = s => s === 'Good' ? 'green' : s === 'Marginal' ? 'amber' : 'red';
+  $('#plannerTable').innerHTML = `<tr><th>#</th><th>Crop</th><th>Suitability (est.)</th><th>Season</th><th class="num">Est. water m³/ha</th><th class="num">Peak m³/ha/d</th><th class="num">Modeled ECe (thr)</th><th class="num">Drainage-capped LF</th><th class="num">Est. rel. yield</th><th class="num">Est. AED/m³</th></tr>` +
+    rows.map((r, i) => `<tr class="${r.k === p.current ? 'hl' : ''}"><td>${i + 1}</td><td>${r.c.name}${r.k === p.current ? ' <span class="tag amber">now</span>' : ''}${i === 0 ? ' <span class="tag green">top est.</span>' : ''}</td>
+      <td><span class="tag ${suitTag(r.sp.suitability)}">${r.sp.suitability}</span></td><td>${r.season}</td>
       <td class="num">${fmt(r.sp.totM3)}</td><td class="num ${r.feasible ? '' : 'bad'}">${fmt(r.sp.peakM3)}${r.feasible ? '' : ' ⚠'}</td>
-      <td class="num">${r.sp.capped ? '<span class="bad">max 40%</span>' : pct(r.sp.LR)}</td><td class="num ${r.sp.ys < 0.9 ? 'bad' : ''}">${pct(r.sp.ys)}</td>
-      <td class="num">${fmt(r.profit)}</td><td class="num"><b class="${r.perM3 < 0 ? 'bad' : ''}">${fmt(r.perM3, 2)}</b></td><td class="num">${fmt(r.kgM3, 1)}</td></tr>`).join('');
+      <td class="num ${r.sp.modeledECe > r.c.ecThr ? 'warn' : ''}">${fmt(r.sp.modeledECe, 1)} <span class="muted">(${r.c.ecThr})</span></td>
+      <td class="num">${r.sp.capped ? `<span class="warn">cap ${pct(r.sp.drainCap)}</span>` : pct(r.sp.LR)}</td>
+      <td class="num ${r.sp.ys < 0.9 ? 'bad' : ''}">${pct(r.sp.ys)}</td>
+      <td class="num"><b class="${r.perM3 < 0 ? 'bad' : ''}">${fmt(r.perM3, 2)}</b></td></tr>`).join('');
   const cur = rows.find(r => r.k === p.current), best = rows[0];
   let note;
   if (!cur || !best || best.k === cur?.k) {
-    note = `Your current crop is already the best fit for this water. Water includes salt flushing at EC ${fmt(ecw, 1)} dS/m.`;
+    note = `Your current crop is among the best estimated fits for modeled root-zone salinity (water ECw ${fmt(ecw, 1)} dS/m, ${drainage} drainage).`;
   } else if (best.perM3 <= 0) {
-    note = `At ${fmt(cost, 1)} AED/m³ and EC ${fmt(ecw, 1)} dS/m, none of these crops cover water costs. Lower water cost or blend with fresher water.`;
+    note = `At ${fmt(cost, 1)} AED/m³, ECw ${fmt(ecw, 1)} dS/m, and ${drainage} drainage, modeled returns do not cover water costs. Blend fresher water or reduce water cost.`;
   } else if (cur.perM3 <= 0) {
-    note = `At this water cost and salinity, ${cur.c.name} loses <b>${fmt(Math.abs(cur.profit))} AED/ha</b>. Putting that ${fmt(cur.sp.totM3)} m³ into <b>${best.c.name}</b> earns <b>${fmt(best.perM3, 2)} AED/m³</b> (≈ <b>${fmt((best.perM3 - cur.perM3) * cur.sp.totM3)} AED/ha</b> swing). ⚠ = the well cannot supply the hottest-day peak.`;
+    note = `Modeled estimate: at this water cost and ${drainage} drainage, ${cur.c.name} shows an estimated loss of <b>${fmt(Math.abs(cur.profit))} AED/ha</b>. Shifting ${fmt(cur.sp.totM3)} m³ to <b>${best.c.name}</b> models at <b>${fmt(best.perM3, 2)} AED/m³</b> (≈ <b>${fmt((best.perM3 - cur.perM3) * cur.sp.totM3)} AED/ha</b> estimated difference).`;
   } else {
-    note = `With the same ${fmt(cur.sp.totM3)} m³ of water that ${cur.c.name} uses on one hectare, <b>${best.c.name}</b> would earn ≈ <b>${fmt((best.perM3 - cur.perM3) * cur.sp.totM3)} AED more</b> — or earn the same profit using ${pct(1 - cur.perM3 / best.perM3)} less water. ⚠ = the well cannot supply the hottest-day peak. Water includes salt flushing at EC ${fmt(ecw, 1)} dS/m.`;
+    note = `Modeled estimate: with ${fmt(cur.sp.totM3)} m³ of water, <b>${best.c.name}</b> models at ≈ <b>${fmt((best.perM3 - cur.perM3) * cur.sp.totM3)} AED more per ha</b> (or the same estimated return with ${pct(1 - cur.perM3 / best.perM3)} less water).`;
   }
-  $('#plannerNote').innerHTML = note;
+  $('#plannerNote').innerHTML = note + ' <em>All modeled ECe, relative yield, and AED/m³ figures are planning estimates based on FAO-29 / FAO-56 and illustrative UAE farm-gate prices, not guaranteed field yields.</em>';
 }
 
 /* ---------- Date harvest (on-device colour analysis) ---------- */

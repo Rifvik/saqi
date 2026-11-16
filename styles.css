@@ -557,6 +557,10 @@ a{color:var(--primary)}
 .pf-result b{color:var(--primary)}
 .pf-op{font-family:var(--mono);font-size:1.25rem;font-weight:800;color:var(--primary);padding:0 .15rem}
 
+/* Data Confidence & Provenance Strip */
+.conf-bar{display:flex;flex-wrap:wrap;gap:.4rem;margin:0 0 1rem}
+.conf-bar .tag{font-size:.74rem;padding:.28rem .7rem}
+
 /* Interactive Field Map & Grid */
 .field-map{
   width:100%;height:340px;border-radius:1rem;border:1px solid var(--border);
