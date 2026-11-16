@@ -282,25 +282,80 @@ function bindInputs() {
   });
 }
 
-/* ---------- tabs & init ---------- */
-let leaveTimer = null;
-function moveTabIndicator(btn, instant = false) {
-  const ind = $('.tab-indicator');
-  if (!ind || !btn) return;
-  if (instant) ind.style.transition = 'none';
-  ind.style.width = btn.offsetWidth + 'px';
-  ind.style.transform = `translate3d(${btn.offsetLeft}px,0,0)`;
-  ind.style.opacity = '1';
-  if (instant) { ind.offsetHeight; ind.style.transition = ''; }
+/* ---------- homepage Zone A simulator ---------- */
+let simCond = { ...Engine.HOME_SCENARIOS.normal.conditions };
+function renderHomeSim() {
+  const d = Engine.decideZoneA(simCond);
+  $('#valTemp').textContent = simCond.temperature + '°C';
+  $('#valSal').textContent = simCond.salinity.toFixed(1) + ' dS/m';
+  $('#valMoist').textContent = simCond.moisture + '%';
+  $('#valHum').textContent = simCond.humidity + '%';
+
+  $('#hpSavedLitres').textContent = fmt(d.savedLitres);
+  $('#hpSavedBadge').textContent = `${d.savedPct}% less than habit`;
+  $('#hpTradL').textContent = fmt(d.traditionalLitres) + ' L';
+  $('#hpSmartL').textContent = fmt(d.smartLitres) + ' L';
+  $('#hpSmartBar').style.width = `${(d.smartLitres / d.traditionalLitres) * 100}%`;
+
+  $('#resSavedPct').textContent = d.savedPct + '%';
+  $('#resSavedL').textContent = fmt(d.savedLitres) + ' L';
+
+  $('#simMins').textContent = d.totalMinutes + ' mins';
+  const fl = $('#simFlush');
+  fl.style.display = d.flushPct > 0 ? 'inline-flex' : 'none';
+  fl.querySelector('span').textContent = `Add ${d.flushPct}% salt-leaching flush`;
+  $('#simReason').textContent =
+    (simCond.moisture < 23 ? 'Dry soil and ' : 'Current moisture and ') +
+    (simCond.temperature >= 43 ? 'extreme heat increase crop demand. ' : 'the heat set the base run time. ') +
+    (d.flushPct > 0 ? 'The extra flush moves salt below the root zone instead of letting it build up.' : 'No extra salt flush is needed at this salinity.');
+  $('#simRisk').textContent = `${d.stressRisk} crop stress risk`;
+  $('#simLitres').textContent = `${fmt(d.smartLitres)} litres total`;
+
+  $('#cmpTradL').textContent = fmt(d.traditionalLitres) + ' L';
+  $('#cmpSmartL').textContent = fmt(d.smartLitres) + ' L';
+  $('#cmpTradRisk').textContent = d.traditionalStressRisk;
+  $('#cmpSmartRisk').textContent = d.stressRisk;
+  $('#cmpSavedPct').textContent = d.savedPct + '%';
+  $('#cmpSavedL').textContent = fmt(d.savedLitres);
 }
+function initHomeSim() {
+  const syncSliders = () => {
+    $('#slTemp').value = simCond.temperature;
+    $('#slSal').value = simCond.salinity;
+    $('#slMoist').value = simCond.moisture;
+    $('#slHum').value = simCond.humidity;
+  };
+  $$('#simScenarios button').forEach(b => b.onclick = () => {
+    const sc = b.dataset.sim;
+    simCond = { ...Engine.HOME_SCENARIOS[sc].conditions };
+    $$('#simScenarios button').forEach(x => x.classList.toggle('active', x === b));
+    syncSliders(); renderHomeSim();
+  });
+  const bindSlider = (id, key) => $(id).addEventListener('input', e => {
+    simCond[key] = +e.target.value;
+    $$('#simScenarios button').forEach(x => x.classList.remove('active'));
+    renderHomeSim();
+  });
+  bindSlider('#slTemp', 'temperature'); bindSlider('#slSal', 'salinity');
+  bindSlider('#slMoist', 'moisture'); bindSlider('#slHum', 'humidity');
+  $('#simCopy').onclick = async () => {
+    const d = Engine.decideZoneA(simCond);
+    const msg = `Irrigate Zone A for ${d.totalMinutes} mins at 4:30 AM${d.flushPct > 0 ? ` — Add ${d.flushPct}% salt-leaching flush` : ''}.`;
+    try { await navigator.clipboard.writeText(msg); toast('Watering instruction copied'); }
+    catch { toast(msg); }
+  };
+  renderHomeSim();
+}
+
+/* ---------- tabs & init ---------- */
+const TAB_ORDER = ['home', 'today', 'farm', 'blend', 'sensor', 'drip', 'planner', 'harvest', 'share', 'adviser', 'about'];
+let leaveTimer = null;
 function showTab(id, instant = false) {
-  if (!document.getElementById(id)) id = 'today';
-  const btns = $$('nav.tabs button');
+  if (!document.getElementById(id)) id = 'home';
   const prevSec = $('section.tab.active');
   const nextSec = document.getElementById(id);
-  const nextBtn = btns.find(b => b.dataset.tab === id);
-  const prevIdx = prevSec ? btns.findIndex(b => b.dataset.tab === prevSec.id) : -1;
-  const nextIdx = btns.findIndex(b => b.dataset.tab === id);
+  const prevIdx = prevSec ? TAB_ORDER.indexOf(prevSec.id) : -1;
+  const nextIdx = TAB_ORDER.indexOf(id);
   const dir = (prevIdx === -1 || nextIdx >= prevIdx) ? 1 : -1;
 
   if (leaveTimer) { clearTimeout(leaveTimer); leaveTimer = null; }
@@ -310,16 +365,14 @@ function showTab(id, instant = false) {
     prevSec.style.setProperty('--dir', dir);
     prevSec.classList.remove('active');
     prevSec.classList.add('is-leaving');
-    leaveTimer = setTimeout(() => prevSec.classList.remove('is-leaving'), 240);
+    leaveTimer = setTimeout(() => prevSec.classList.remove('is-leaving'), 220);
   } else if (prevSec && prevSec !== nextSec) {
     prevSec.classList.remove('active');
   }
 
   nextSec.style.setProperty('--dir', dir);
   nextSec.classList.add('active');
-  btns.forEach(b => b.classList.toggle('active', b.dataset.tab === id));
-  moveTabIndicator(nextBtn, instant);
-  if (!instant && nextBtn) nextBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  $$('#toolsMenu [data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
   history.replaceState(null, '', '#' + id);
 }
 function renderAll() {
@@ -328,31 +381,51 @@ function renderAll() {
   bindInputs(); updateNet();
   $$('[data-goto]').forEach(a => a.onclick = e => { e.preventDefault(); showTab(a.dataset.goto); window.scrollTo({ top: 0, behavior: 'smooth' }); });
 }
-const THEME_KEY = 'saqi-theme';
+const THEME_KEY = 'saqi-theme-v2';
 function applyTheme(t) {
-  const mode = t === 'light' ? 'light' : 'dark';
+  const mode = t === 'dark' ? 'dark' : 'light';
   document.documentElement.dataset.theme = mode;
   const meta = $('meta[name="theme-color"]');
-  if (meta) meta.content = mode === 'light' ? '#F6F4EE' : '#1f1c18';
+  if (meta) meta.content = mode === 'dark' ? '#1f1c18' : '#faf9f5';
   const btn = $('#themeToggle');
   if (btn) {
     btn.innerHTML = mode === 'dark'
-      ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><span>Light</span>'
-      : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><span>Dark</span>';
+      ? '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><span class="sm-hide">Light</span>'
+      : '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><span class="sm-hide">Dark</span>';
     btn.title = mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
   }
 }
 async function init() {
-  applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+  applyTheme(localStorage.getItem(THEME_KEY) || 'light');
   $('#themeToggle').onclick = () => {
-    const next = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
+    const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     try { localStorage.setItem(THEME_KEY, next); } catch (e) { }
     applyTheme(next);
   };
-  $$('nav.tabs button').forEach(b => b.onclick = () => { showTab(b.dataset.tab); window.scrollTo({ top: 0, behavior: 'smooth' }); });
-  showTab((location.hash || '#today').slice(1), true);
-  addEventListener('resize', () => moveTabIndicator($('nav.tabs button.active'), true));
-  if (document.fonts?.ready) document.fonts.ready.then(() => moveTabIndicator($('nav.tabs button.active'), true));
+
+  const toolsMenu = $('#toolsMenu'), toolsBtn = $('#toolsBtn');
+  const setMenu = open => { toolsMenu.hidden = !open; toolsBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); };
+  toolsBtn.onclick = e => { e.stopPropagation(); setMenu(toolsMenu.hidden); };
+  document.addEventListener('mousedown', e => { if (!$('#toolsWrap').contains(e.target)) setMenu(false); });
+  $$('#toolsMenu [data-tab]').forEach(b => b.onclick = () => { setMenu(false); showTab(b.dataset.tab); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+
+  $$('[data-anchor]').forEach(a => a.onclick = e => {
+    e.preventDefault();
+    const targetId = a.dataset.anchor;
+    if (!$('#home').classList.contains('active')) showTab('home', true);
+    requestAnimationFrame(() => document.getElementById(targetId)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  });
+
+  const initial = (location.hash || '#home').slice(1);
+  if (['problem', 'engine', 'results', 'demo'].includes(initial)) {
+    showTab('home', true);
+    requestAnimationFrame(() => document.getElementById(initial)?.scrollIntoView({ block: 'start' }));
+  } else {
+    showTab(initial, true);
+    requestAnimationFrame(() => window.scrollTo(0, 0));
+  }
+
+  initHomeSim();
   const hl = $('#hdrLocation');
   hl.innerHTML = Object.entries(LOCATIONS).map(([k, l]) => `<option value="${k}">${l.name}</option>`).join('');
   hl.value = state.location; $('#hdrScenario').value = state.scenario;
@@ -371,7 +444,6 @@ async function init() {
   initTools();
   await loadWeather();
   renderAll();
-  requestAnimationFrame(() => window.scrollTo(0, 0));
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => { });
 }
 init();

@@ -164,7 +164,31 @@ const Engine = (() => {
     return { rows, traded: used, unused: S - used, totalShare: sum(farms.map(f => f.share)) };
   }
 
+  /* Homepage interactive Zone A simulator (2 ha drip-irrigated date palms, 40 m³/h flow). */
+  const HOME_SCENARIOS = {
+    normal:   { label: 'Normal Day',               conditions: { temperature: 42, salinity: 4.8,  moisture: 26, humidity: 32 } },
+    heatwave: { label: '48°C Heatwave',            conditions: { temperature: 48, salinity: 4.8,  moisture: 18, humidity: 18 } },
+    salinity: { label: 'High Soil Salinity Spike', conditions: { temperature: 42, salinity: 10.5, moisture: 26, humidity: 32 } },
+  };
+  function decideZoneA({ temperature, salinity, moisture, humidity }) {
+    const baseMinutes = Math.round(clamp(
+      11 + Math.max(0, temperature - 35) * 0.35 + Math.max(0, 28 - moisture) * 0.25 + Math.max(0, 35 - humidity) * 0.04,
+      6, 24
+    ));
+    const flushPct = Math.round(clamp(Math.max(0, salinity - 3) * 4, 0, 25));
+    const totalMinutes = Math.min(30, Math.round(baseMinutes * (1 + flushPct / 100)));
+    const smartLitres = Math.round((totalMinutes / 60) * 40000);
+    const traditionalLitres = 20000;
+    const savedLitres = traditionalLitres - smartLitres;
+    const savedPct = Math.round((savedLitres / traditionalLitres) * 100);
+    const stressRisk = (salinity >= 8 || moisture < 16 || temperature >= 48) ? 'High'
+      : (salinity >= 5 || moisture < 23 || temperature >= 43) ? 'Moderate' : 'Low';
+    const traditionalStressRisk = (salinity >= 5 || temperature >= 45) ? 'High' : 'Moderate';
+    return { baseMinutes, flushPct, totalMinutes, smartLitres, traditionalLitres, savedLitres, savedPct, stressRisk, traditionalStressRisk };
+  }
+
   return { kcAt, stageName, seasonLength, hargreavesET0, leachingReq, rootzoneECe, salinityYield,
-           blockDecision, evaluate, flowCheck, dayLossPct, optimiseBlend, seasonPlan, shareWater, sum, clamp };
+           blockDecision, evaluate, flowCheck, dayLossPct, optimiseBlend, seasonPlan, shareWater,
+           HOME_SCENARIOS, decideZoneA, sum, clamp };
 })();
 if (typeof module !== 'undefined') module.exports = Engine;
