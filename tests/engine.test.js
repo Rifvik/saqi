@@ -33,12 +33,15 @@ test('emitter count × flow auto-calculates block flow accurately', () => {
   assert.equal(Engine.resolveBlockFlow(b2), 12);
 });
 
-test('zero or negative flow flags invalidFlow instead of returning 0-minute skip', () => {
+test('zero or negative flow flags invalidFlow and has flowZero phrases in all 5 worker languages', () => {
   const blk = { crop: 'date', area: 2, day: 10, system: 'drip', flowMode: 'direct', flow: 0 };
   const dec = Engine.blockDecision(blk, CROPS.date, { et0: 5, rain: 0 }, 3.0, false, 'good');
   assert.equal(dec.invalidFlow, true);
   assert.equal(dec.minutes, null);
   assert(dec.m3 > 0, 'Crop volume requirement is still reported even when flow is invalid');
+  for (const lang of ['en', 'ar', 'ur', 'hi', 'bn']) {
+    assert(typeof PHRASES.flowZero?.[lang] === 'string' && PHRASES.flowZero[lang].includes('{v}'));
+  }
 });
 
 test('poor drainage caps leaching fraction and flags salt accumulation risk', () => {

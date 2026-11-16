@@ -27,7 +27,7 @@ python server.py
 ```
 
 Open **`http://127.0.0.1:8765/index.html`** in your browser.  
-*(Without an API key, all agronomic dashboards continue to run 100% locally; you can also serve static-only tools with `npx --yes serve -l 8765 .` or set `SAQI_AI_MOCK=1` for offline AI UI preview.)*
+*(On Windows if `python` is mapped to an alias, use `py -3 server.py`; without AI features, `npx --yes serve -l 8765 .` works cleanly or set `SAQI_AI_MOCK=1` for offline AI UI preview.)*
 
 ---
 

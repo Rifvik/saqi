@@ -145,15 +145,30 @@ function daysSince(dateStr) {
 }
 
 /* ---------- Today ---------- */
+function weatherEmoji(day, heatThreshold = 45) {
+  if (!day) return '☀️';
+  if ((day.rain || 0) > 0.2) return '🌧️';
+  if (day.tmax >= heatThreshold + 3) return '🔥';
+  if (day.tmax >= heatThreshold || day.tmax >= 33) return '☀️';
+  if (day.tmax >= 27) return '🌤️';
+  return '⛅';
+}
+
 function renderToday() {
   results = computeAll();
   const thr = +state.heatThreshold; const ecw = +state.water.ec;
   const drainage = state.drainage || 'good';
-  $('#wxSource').innerHTML = `${esc(wx.source)}. Water ECw <b class="mono">${fmt(ecw, 1)} dS/m</b> · Drainage: <b>${drainage}</b>.` +
-    (wx.days[0] ? ` <span class="muted">Hargreaves backup ET₀ today: <span class="mono">${fmt(Engine.hargreavesET0(wx.days[0].tmax, wx.days[0].tmin, (LOCATIONS[state.location] || LOCATIONS.alain).lat, doy(wx.days[0].date)), 1)} mm</span>.</span>` : '');
-  const rb = $('#refreshWx'); if (rb) rb.style.display = wx.kind === 'live' ? '' : 'none';
+  const locObj = LOCATIONS[state.location] || LOCATIONS.alain;
+  const startHr = parseInt(String(state.startTime || '21:00').split(':')[0], 10);
+  const isNightWindow = !isNaN(startHr) && (startHr >= 17 || startHr <= 5);
 
-  // Data confidence & provenance bar
+  $('#wxSource').innerHTML = `${esc(wx.source)} · ECw <b class="mono">${fmt(ecw, 1)} dS/m</b> · ${drainage} drainage`;
+  const rb = $('#refreshWx'); if (rb) rb.style.display = wx.kind === 'live' ? '' : 'none';
+  const np = $('#todayNightPill'), nt = $('#todayNightTime');
+  if (np && nt) { np.hidden = !isNightWindow; nt.textContent = `After ${state.startTime}`; }
+
+  // Data confidence & provenance (compact summary outside + full tags inside details)
+  const wxShort = wx.kind === 'live' ? 'Live weather' : wx.kind === 'cached' ? 'Cached forecast' : wx.kind === 'scenario' ? 'Synthetic demo' : 'Climate fallback';
   const wxConf = wx.kind === 'live'
     ? `<span class="tag green">Weather: Live Open-Meteo · updated ${wx.fetchedAt ? new Date(wx.fetchedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : 'today'} (high confidence)</span>`
     : wx.kind === 'cached'
@@ -161,51 +176,58 @@ function renderToday() {
       : wx.kind === 'scenario'
         ? `<span class="tag amber">Weather: Synthetic scenario (demo mode)</span>`
         : `<span class="tag red">Weather: Hargreaves climate fallback (±15% ET₀ uncertainty)</span>`;
+  const hargToday = wx.days[0] ? fmt(Engine.hargreavesET0(wx.days[0].tmax, wx.days[0].tmin, locObj.lat, doy(wx.days[0].date)), 1) + ' mm' : '–';
   const ecAge = daysSince(state.water.tested);
   const ecStale = ecAge == null || ecAge > 30 || (state.water.source || '').startsWith('estimated');
   const ecConf = `<span class="tag ${ecStale ? 'amber' : 'green'}">Water ECw: ${fmt(ecw, 1)} dS/m · ${esc(state.water.source || 'measured')}${ecAge != null ? ` · ${ecAge === 0 ? 'today' : ecAge + 'd ago'}` : ''}${ecStale ? ' (verify soon)' : ''}</span>`;
-  const drainConf = `<span class="tag ${drainage === 'poor' ? 'red' : drainage === 'moderate' ? 'amber' : 'blue'}">Soil ECe: modeled FAO-29 steady-state (${drainage} drainage)${state.sensor?.ece != null ? ` · Sensor ${fmt(state.sensor.ece, 1)} dS/m (${state.sensor.useForFlush ? 'flush active' : 'monitor only'})` : ''}</span>`;
-  const flowBad = results.some(r => r.flags.status !== 'ok');
-  const flowConf = `<span class="tag ${flowBad ? 'red' : 'blue'}">Flow: ${flowBad ? 'anomaly detected — verify emitters/pipes' : 'synthetic 14d meter baseline'}</span>`;
+  const drainConf = `<span class="tag ${drainage === 'poor' ? 'red' : drainage === 'moderate' ? 'amber' : 'blue'}">Soil ECe: modeled FAO-29 steady-state (${drainage} drainage)${state.sensor?.ece != null ? ` · Sensor ${fmt(state.sensor.ece, 1)} dS/m (${state.sensor.useForFlush ? 'bounded flush heuristic active' : 'monitor only'})` : ''}</span>`;
+  const flowBad = results.some(r => r.flags.status !== 'ok' || r.today.invalidFlow);
+  const flowConf = `<span class="tag ${flowBad ? 'red' : 'blue'}">Flow: ${flowBad ? 'check flow / pipes' : 'synthetic 14d meter baseline'} · Hargreaves backup ET₀ ${hargToday}</span>`;
   $('#dataConfidence').innerHTML = wxConf + ecConf + drainConf + flowConf;
+  if ($('#todayConfBrief')) {
+    $('#todayConfBrief').textContent = `${wxShort} · ECw ${fmt(ecw, 1)} dS/m (${ecAge === 0 ? 'today' : ecAge != null ? ecAge + 'd' : 'est.'}) · Soil modeled${flowBad ? ' · Flow notice' : ''}`;
+  }
 
+  // Band 2: Clean 7-day weather strip with weatherEmoji
   $('#forecast').innerHTML = wx.days.map((d, i) => {
     const hot = d.tmax >= thr; const dt = new Date(d.date + 'T12:00');
+    const cue = d.rain > 0.2 ? ` · ${fmt(d.rain, 1)}mm` : d.wind >= 22 ? ` · 💨 ${fmt(d.wind)}` : '';
     return `<div class="day ${i === 0 ? 'is-today' : ''} ${hot ? 'hot' : ''}">
       <div class="d-name">${dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' })}</div>
+      <div class="d-icon" aria-hidden="true">${weatherEmoji(d, thr)}</div>
       <div class="d-temp">${fmt(d.tmax)}° <span>/ ${fmt(d.tmin)}°</span></div>
-      <div class="d-et">ET₀ <b>${fmt(d.et0, 1)}</b> mm</div>
-      <div class="d-wind">↗ ${fmt(d.wind)} km/h${d.rain > 0 ? ' · 🌧 ' + fmt(d.rain, 1) : ''}</div>
-      ${hot ? '<span class="tag red" style="margin-top:.25rem">Heat</span>' : ''}</div>`;
+      <div class="d-et">ET₀ <b>${fmt(d.et0, 1)}</b>${cue}</div>
+    </div>`;
   }).join('');
 
-  // alerts
+  // Band 3a: Priority alerts (max 2 prominent, overflow folded calmly)
   const icWarn = '<span class="alert-icon"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>';
   const icDrop = '<span class="alert-icon"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></span>';
-  const icOk = '<span class="alert-icon"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"/></svg></span>';
-  const al = [];
+  const criticalAlerts = [], otherAlerts = [];
+  results.forEach(r => {
+    if (r.today.invalidFlow) criticalAlerts.push(`<div class="alert red">${icWarn}<span class="alert-body"><b>Valve ${r.bi + 1} (${esc(r.b.name)}) flow is 0 m³/h:</b> enter block flow or emitters in <a href="#farm" data-goto="farm">My farm</a> (crop needs ${fmt(r.today.m3, 1)} m³).</span></div>`);
+    if (r.flags.status === 'leak') criticalAlerts.push(`<div class="alert red">${icDrop}<span class="alert-body"><b>Valve ${r.bi + 1} leak:</b> flow is <b class="bad">${pct(r.flags.ratio)}</b> of normal. Inspect lines. <a href="#drip" data-goto="drip">Details</a></span></div>`);
+    if (r.flags.status === 'clog') criticalAlerts.push(`<div class="alert red">${icWarn}<span class="alert-body"><b>Valve ${r.bi + 1} clog:</b> flow at <b class="bad">${pct(r.flags.ratio)}</b> for 2+ days. Flush emitters. <a href="#drip" data-goto="drip">Details</a></span></div>`);
+    if (r.today.drainageBlocked) otherAlerts.push(`<div class="alert amber">${icWarn}<span class="alert-body"><b>${esc(r.b.name)} drainage cap:</b> max LF ${pct(r.today.drainCap)} (${drainage}) limits flushing; modeled ECe ${fmt(r.today.modeledECe, 1)} dS/m. <a href="#blend" data-goto="blend">Water mix</a></span></div>`);
+    else if (r.today.unsuitable) otherAlerts.push(`<div class="alert amber">${icWarn}<span class="alert-body"><b>${esc(r.b.name)}:</b> modeled ECe (${fmt(r.today.modeledECe, 1)} dS/m) exceeds threshold (${r.crop.ecThr}). <a href="#planner" data-goto="planner">Suitability</a></span></div>`);
+  });
   const hotDays = wx.days.filter(d => d.tmax >= thr);
   if (hotDays.length) {
     let save = 0;
     results.forEach(r => { if (r.b.system !== 'drip') wx.days.forEach((d, i) => { if (d.tmax >= thr) save += r.daily[i].m3 * (Engine.dayLossPct(d.tmax, d.wind) - 5) / 100; }); });
-    al.push(`<div class="alert red">${icWarn}<span class="alert-body"><b>Heat ≥ ${thr} °C on ${hotDays.map(d => new Date(d.date + 'T12:00').toLocaleDateString('en-GB', { weekday: 'short' })).join(', ')}.</b> Water only between ${esc(state.startTime)} and 05:00, and give about 10% extra the evening before so roots start the hot day full.${save > 1 ? ` Night watering of sprinkler/flood blocks avoids ≈ <b>${fmt(save)} m³</b> of evaporation this week.` : ''}</span></div>`);
+    otherAlerts.push(`<div class="alert amber">${icWarn}<span class="alert-body"><b>Heat ≥ ${thr} °C (${hotDays.map(d => new Date(d.date + 'T12:00').toLocaleDateString('en-GB', { weekday: 'short' })).join(', ')}):</b> irrigate ${esc(state.startTime)}–05:00 with +10% pre-heat buffer.${save > 1 ? ` Saves ≈ <b>${fmt(save)} m³</b> evaporation.` : ''}</span></div>`);
   }
-  results.forEach(r => {
-    if (r.today.invalidFlow) {
-      al.push(`<div class="alert red">${icWarn}<span class="alert-body"><b>Valve ${r.bi + 1} (${esc(r.b.name)}) block flow is 0 m³/h:</b> runtime cannot be calculated (crop still needs <b>${fmt(r.today.m3, 1)} m³</b>). Set emitter L/h × count or measured block flow in <a href="#farm" data-goto="farm">My farm</a>.</span></div>`);
-    }
-    if (r.today.drainageBlocked) {
-      al.push(`<div class="alert amber">${icWarn}<span class="alert-body"><b>${esc(r.b.name)} (drainage limit):</b> full salt flushing is blocked by <b>${drainage} drainage</b> (max LF ${pct(r.today.drainCap)}). Modeled root-zone ECe rises to <b>${fmt(r.today.modeledECe, 1)} dS/m</b> vs crop threshold ${r.crop.ecThr} dS/m — avoid over-flushing (waterlogging risk); instead blend fresher water <a href="#blend" data-goto="blend">Water mix</a> or check suitability <a href="#planner" data-goto="planner">Suitability</a></span></div>`);
-    } else if (r.today.unsuitable) {
-      al.push(`<div class="alert amber">${icWarn}<span class="alert-body"><b>${esc(r.b.name)}:</b> modeled root-zone ECe (${fmt(r.today.modeledECe, 1)} dS/m) exceeds ${r.crop.name} threshold (${r.crop.ecThr} dS/m) even at max leaching. Blend fresher water <a href="#blend" data-goto="blend">Water mix</a> or switch crop <a href="#planner" data-goto="planner">Suitability</a></span></div>`);
-    }
-    if (r.flags.status === 'clog') al.push(`<div class="alert red">${icWarn}<span class="alert-body"><b>Valve ${r.bi + 1} (${esc(r.b.name)}):</b> flow is only <b class="bad">${pct(r.flags.ratio)}</b> of normal for 2+ days. Drippers are probably blocked: flush the lines or acid-clean them. <a href="#drip" data-goto="drip">Details</a></span></div>`);
-    if (r.flags.status === 'leak') al.push(`<div class="alert red">${icDrop}<span class="alert-body"><b>Valve ${r.bi + 1} (${esc(r.b.name)}):</b> flow is <b class="bad">${pct(r.flags.ratio)}</b> of normal, which points to a burst pipe or open end. Water is being lost right now. <a href="#drip" data-goto="drip">Details</a></span></div>`);
-  });
-  if (!al.length) al.push(`<div class="alert green">${icOk}<span class="alert-body">No heat, salt, drainage or pipe problems this week.</span></div>`);
-  $('#alerts').innerHTML = al.join('');
+  const allAlerts = [...criticalAlerts, ...otherAlerts];
+  if (!allAlerts.length) {
+    $('#alerts').innerHTML = '';
+  } else if (allAlerts.length <= 2) {
+    $('#alerts').innerHTML = allAlerts.join('');
+  } else {
+    $('#alerts').innerHTML = allAlerts.slice(0, 2).join('') +
+      `<details class="today-more-alerts"><summary>+${allAlerts.length - 2} more field notice${allAlerts.length - 2 === 1 ? '' : 's'}</summary><div class="today-more-list">${allAlerts.slice(2).join('')}</div></details>`;
+  }
 
-  // decision cards
+  // Band 3b: Primary action cards (clean hero runtime + progressive-disclosed Why)
   const trendLabel = tr => tr === 'increasing' ? '<span class="bad">↑ salt accumulating</span>' : tr === 'flushing' ? '<span class="good">↓ salt flushing</span>' : '<span class="good">→ salt stable</span>';
   $('#decisions').innerHTML = results.map(r => {
     const t = r.today, b = r.b, invalidFlow = Boolean(t.invalidFlow), mins = invalidFlow ? 0 : round5(t.minutes), skip = !invalidFlow && mins < 5;
@@ -214,22 +236,25 @@ function renderToday() {
     const d0 = wx.days[0];
     const cls = (invalidFlow || t.unsuitable || t.drainageBlocked || r.flags.status !== 'ok') ? 'warnb' : skip ? 'skip' : '';
     const tagCls = cls === 'warnb' ? 'red' : cls === 'skip' ? 'green' : 'blue';
-    const habitTxt = invalidFlow ? `<span class="bad"><b>Set block flow &gt; 0 m³/h to compare runtimes</b></span>` :
-      Math.abs(diff) < 0.1 ? `<span class="good"><b>close to Saqi</b></span>` :
-        diff > 0 ? `<span class="bad"><b>+${pct(diff)} over need: ${fmt(habitM3 - t.m3)} m³ wasted today</b></span>` :
-          `<span class="bad"><b>${pct((t.m3 - habitM3) / t.m3)} under need: water stress and salt build-up</b></span>`;
+    const habitTxt = invalidFlow ? `<span class="bad">set valid flow &gt; 0 m³/h</span>` :
+      Math.abs(diff) < 0.1 ? `<span class="good">matches Saqi</span>` :
+        diff > 0 ? `<span class="good">${fmt(habitM3 - t.m3)} m³ saved vs. habit</span>` :
+          `<span class="warn">${pct((t.m3 - habitM3) / t.m3)} more — prevents heat/salt stress</span>`;
     return `<div class="card decision ${cls}">
-      <div class="row" style="justify-content:space-between;align-items:flex-start"><h3>Valve ${r.bi + 1} · ${esc(b.name)}</h3><span class="tag ${tagCls}">${r.crop.name} · ${t.stage}</span></div>
-      <div class="big">${invalidFlow ? '<span class="bad">Set block flow &gt; 0 m³/h</span>' : skip ? 'No water today' : `${fmt(mins)} min <span class="after">after ${esc(state.startTime)}</span>`}</div>
-      <div class="metrics">${fmt(t.m3, 1)} m³ · ${fmt(t.grossMm, 1)} mm · ${b.area} ha ${SYSTEMS[b.system].name.toLowerCase()} · block flow ${fmt(r.flow, 1)} m³/h</div>
-      <div class="habit-line">Fixed habit: ${b.habitMin} min (${fmt(habitM3, 1)} m³) → ${habitTxt}</div>
-      <div class="why">Why: ET₀ ${fmt(d0.et0, 1)} mm × Kc ${fmt(t.kc, 2)} (${t.stage}) = <b>${fmt(t.etc, 1)} mm</b> crop ET${t.effRain ? ` − ${fmt(t.effRain, 1)} mm rain` : ''}${t.preHeat ? ' · <b>+10% pre-heatwave buffer</b>' : ''}
-      · salt flush <b>+${pct(flush)}</b>${t.soilReclaim > 0 ? ' (incl. sensor ECe reclamation)' : ''} (modeled root-zone ECe <b>${fmt(t.modeledECe, 1)} dS/m</b> vs crop ECe threshold ${r.crop.ecThr} dS/m; drainage: ${drainage})
-      · ${SYSTEMS[b.system].name.toLowerCase()} efficiency ${pct(t.Ea)} → ${fmt(t.grossMm, 1)} mm × ${b.area} ha = ${fmt(t.m3, 1)} m³${invalidFlow ? ' (set valid block flow to compute minutes)' : ` at ${fmt(r.flow, 1)} m³/h`} (${trendLabel(r.eo.saltTrend)}).</div>
+      <div class="row" style="justify-content:space-between;align-items:center"><h3>Valve ${r.bi + 1} · ${esc(b.name)}</h3><span class="tag ${tagCls}">${r.crop.name} · ${t.stage}</span></div>
+      <div class="big">${invalidFlow ? '<span class="bad">Set block flow &gt; 0 m³/h</span>' : skip ? 'No water today' : `${fmt(mins)} min <span class="after">${isNightWindow ? '🌙 ' : ''}after ${esc(state.startTime)}</span>`}</div>
+      <div class="metrics">${fmt(t.m3, 1)} m³ · ${fmt(t.grossMm, 1)} mm · ${fmt(r.flow, 1)} m³/h ${SYSTEMS[b.system].name.toLowerCase()}</div>
+      <div class="habit-line">Habit ${b.habitMin} min (${fmt(habitM3, 1)} m³) · ${habitTxt}</div>
+      <details class="today-why-fold">
+        <summary>Why this runtime?</summary>
+        <div class="why">ET₀ ${fmt(d0.et0, 1)} mm × Kc ${fmt(t.kc, 2)} (${t.stage}) = <b>${fmt(t.etc, 1)} mm</b> crop ET${t.effRain ? ` − ${fmt(t.effRain, 1)} mm rain` : ''}${t.preHeat ? ' · <b>+10% pre-heatwave buffer</b>' : ''}
+        · salt flush <b>+${pct(flush)}</b>${t.soilReclaim > 0 ? ' (incl. bounded sensor ECe reclamation heuristic)' : ''} (modeled root-zone ECe <b>${fmt(t.modeledECe, 1)} dS/m</b> vs crop ECe threshold ${r.crop.ecThr} dS/m; drainage: ${drainage})
+        · ${SYSTEMS[b.system].name.toLowerCase()} efficiency ${pct(t.Ea)} → ${fmt(t.grossMm, 1)} mm × ${b.area} ha = ${fmt(t.m3, 1)} m³${invalidFlow ? ' (set valid block flow to compute minutes)' : ` at ${fmt(r.flow, 1)} m³/h`} (${trendLabel(r.eo.saltTrend)}).</div>
+      </details>
     </div>`;
   }).join('');
 
-  // 3-way compare: Saqi vs Weather-only (no salt) vs Fixed habit
+  // Band 4: 3-way compare (KPIs + clean visual bars; heavy table collapsed inside <details>)
   const tO = sum(results.map(r => r.weekOurs));
   const tW = sum(results.map(r => r.weekWeatherOnly));
   const tH = sum(results.map(r => r.weekHabit));
@@ -260,11 +285,13 @@ function renderToday() {
     }).join('');
 
   const maxV = Math.max(...results.map(r => Math.max(r.weekOurs, r.weekWeatherOnly, r.weekHabit)), 1);
-  $('#compareChart').innerHTML = results.map(r => `<div style="margin:.4rem 0"><div class="muted">${r.bi + 1}. ${esc(r.b.name)} (${trendLabel(r.eo.saltTrend)} under Saqi · ${r.ew.saltTrend === 'increasing' ? '<span class="bad">↑ salt rises under weather-only</span>' : 'stable under weather-only'})</div>
-    <div class="row"><span style="width:62px" class="muted">Saqi</span><div class="bar" style="flex:1"><i style="width:${r.weekOurs / maxV * 100}%"></i></div><span style="width:70px" class="muted mono">${fmt(r.weekOurs)} m³</span></div>
-    <div class="row"><span style="width:62px" class="muted">Wx-only</span><div class="bar" style="flex:1"><i style="width:${r.weekWeatherOnly / maxV * 100}%;background:var(--warn)"></i></div><span style="width:70px" class="muted mono">${fmt(r.weekWeatherOnly)} m³</span></div>
-    <div class="row"><span style="width:62px" class="muted">Habit</span><div class="bar" style="flex:1"><i style="width:${r.weekHabit / maxV * 100}%;background:var(--destructive)"></i></div><span style="width:70px" class="muted mono">${fmt(r.weekHabit)} m³</span></div></div>`).join('') +
-    `<p class="muted">Model note: Weekly water balance constrained by drainage capacity (${drainage}). Effective leaching sets steady-state modeled root-zone ECe (FAO-29 Rhoades); modeled ECe → estimated relative yield (Maas-Hoffman); water deficit → Ky (FAO-33). All yields and ECe values are <b>estimates</b>, not guaranteed field yields.</p>`;
+  $('#compareChart').innerHTML = results.map(r => `<div class="today-bar-row"><div class="today-bar-head"><span>${r.bi + 1}. ${esc(r.b.name)}</span><span class="muted">${trendLabel(r.eo.saltTrend)}${r.ew.saltTrend === 'increasing' ? ' · <span class="bad">↑ Wx-only salt rises</span>' : ''}</span></div>
+    <div class="row"><span class="today-bar-lbl">Saqi</span><div class="bar" style="flex:1"><i style="width:${r.weekOurs / maxV * 100}%"></i></div><span class="today-bar-val mono">${fmt(r.weekOurs)} m³</span></div>
+    <div class="row"><span class="today-bar-lbl">Wx-only</span><div class="bar" style="flex:1"><i style="width:${r.weekWeatherOnly / maxV * 100}%;background:var(--warn)"></i></div><span class="today-bar-val mono">${fmt(r.weekWeatherOnly)} m³</span></div>
+    <div class="row"><span class="today-bar-lbl">Habit</span><div class="bar" style="flex:1"><i style="width:${r.weekHabit / maxV * 100}%;background:var(--destructive)"></i></div><span class="today-bar-val mono">${fmt(r.weekHabit)} m³</span></div></div>`).join('');
+  if ($('#todayModelNote')) {
+    $('#todayModelNote').innerHTML = `Model note: Weekly water balance constrained by drainage capacity (${drainage}). Effective leaching sets steady-state modeled root-zone ECe (FAO-29 Rhoades); modeled ECe → estimated relative yield (Maas–Hoffman); water deficit → Ky (FAO-33). All yields and ECe values are <b>estimates</b>, not guaranteed field yields.`;
+  }
 
   renderVoice();
 }
@@ -429,6 +456,7 @@ function renderHomeSim() {
   if ($('#cmpSavedNote')) $('#cmpSavedNote').innerHTML = saved
     ? `<span id="cmpSavedL">${fmt(absSaved)}</span> litres stay available vs. habit, while protecting salt balance vs. weather-only.`
     : `<span id="cmpSavedL">${fmt(absSaved)}</span> extra litres prevent crop collapse when 240-min habit under-waters (${d.habitYieldPct}% est. yield).`;
+  if (window.HeroCinema) window.HeroCinema.sync(d);
 }
 function initHomeSim() {
   const syncSliders = () => {
@@ -494,6 +522,7 @@ function showTab(id, instant = false) {
   });
   if (!instant && activeBtn && window.innerWidth > 960) activeBtn.closest('.nav-dd')?.querySelector('.nav-drop-btn') || activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   if (id === 'farm' && typeof lmap !== 'undefined' && lmap) setTimeout(() => lmap.invalidateSize(), 80);
+  if (id === 'home' && window.HeroCinema) window.HeroCinema.refresh();
   if (id === 'assistant' && typeof aiOnShow === 'function') aiOnShow();
   const fab = $('#aiFab'); if (fab) fab.hidden = (id === 'assistant');
   if (typeof refreshReveals === 'function') refreshReveals(prevSec !== nextSec && !instant);

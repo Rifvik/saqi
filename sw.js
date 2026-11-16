@@ -1,6 +1,6 @@
 /* Saqi service worker: app works fully offline after first visit. Network-first for app files, cache fallback. */
-const CACHE = 'saqi-v19';
-const FILES = ['./', 'index.html', 'styles.css', 'js/data.js', 'js/engine.js', 'js/tools.js', 'js/app.js', 'js/ai.js', 'js/shader-bg.js', 'manifest.json', 'icon.svg'];
+const CACHE = 'saqi-v22';
+const FILES = ['./', 'index.html', 'styles.css', 'js/data.js', 'js/engine.js', 'js/tools.js', 'js/app.js', 'js/ai.js', 'js/hero-cinema.js', 'js/shader-bg.js', 'manifest.json', 'icon.svg'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())));
 self.addEventListener('fetch', e => {

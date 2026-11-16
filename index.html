@@ -139,11 +139,13 @@
 <!-- HOME (matching zip2 homepage) -->
 <section class="tab" id="home">
   <div class="hero-section">
+    <div class="film-grain" aria-hidden="true"></div>
+    <div class="bg-grid-theme" aria-hidden="true"></div>
     <div class="sunspot" aria-hidden="true"></div>
     <div class="hero-grid">
       <div>
         <div class="hero-badge"><span class="dot"></span>Built for UAE date palm growers</div>
-        <h1 class="hero-title">Desert data.<br><span>Smarter drops.</span></h1>
+        <h1 class="hero-title"><span class="hero-line-1 text-3d-matte">Desert data.</span><br><span class="hero-line-2 text-oasis-matte">Smarter drops.</span></h1>
         <p class="hero-sub">Turn soil, salt and weather conditions into one clear watering decision—before the desert heat takes its share.</p>
         <div class="hero-ctas">
           <a href="#demo" class="btn-solid lg" data-anchor="demo">Try the live demo <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg></a>
@@ -157,7 +159,8 @@
       </div>
 
       <div class="preview-wrap">
-        <div class="preview-card">
+        <div class="preview-card" style="position:relative">
+          <div class="card-sheen" aria-hidden="true"></div>
           <div class="preview-head">
             <div>
               <div class="preview-title"><span class="dot"></span>Live water preview (FAO engine)</div>
@@ -183,6 +186,100 @@
           <div class="preview-foot">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
             Updates as you move the field-condition sliders below
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Interactive 3D Phone Stage (adapted to Oasis Light/Dark theme; synced live to Zone A FAO engine) -->
+    <div class="hero-stage" id="heroStage">
+      <div class="hero-stage-card oasis-depth-card" id="heroStageCard">
+        <div class="card-sheen" aria-hidden="true"></div>
+        <div class="hero-stage-grid">
+          <div class="hero-stage-left">
+            <span class="tag green">PHONE-FIRST FIELD VIEW</span>
+            <h3>One runtime per valve, delivered before sunrise.</h3>
+            <p>Weather, crop stage, drainage and groundwater salinity turn into clear minutes and spoken worker instructions in Urdu, Hindi, Bengali, Arabic or English.</p>
+            <div class="hero-stage-meta">
+              <span class="pill" id="heroPhoneYield">100% est. yield</span>
+              <a href="#today" class="btn sm alt" data-goto="today">Open Tonight's Plan →</a>
+            </div>
+          </div>
+
+          <div class="hero-stage-phone" id="heroPhoneWrap">
+            <div class="hero-phone-scale">
+              <div class="iphone-bezel" id="heroPhoneBezel">
+                <div class="hardware-btn hb-mute" aria-hidden="true"></div>
+                <div class="hardware-btn hb-vup" aria-hidden="true"></div>
+                <div class="hardware-btn hb-vdn" aria-hidden="true"></div>
+                <div class="hardware-btn hb-pwr" aria-hidden="true"></div>
+
+                <div class="phone-screen">
+                  <div class="screen-glare" aria-hidden="true"></div>
+                  <div class="dynamic-island" aria-hidden="true">
+                    <span class="island-dot"></span>
+                  </div>
+
+                  <div class="phone-head">
+                    <div>
+                      <span class="phone-kicker">TODAY</span>
+                      <div class="phone-title">Zone A</div>
+                    </div>
+                    <div class="phone-avatar notranslate" translate="no">💧</div>
+                  </div>
+
+                  <div class="phone-ring-wrap">
+                    <svg class="phone-ring-svg" viewBox="0 0 144 144" aria-hidden="true">
+                      <circle cx="72" cy="72" r="58" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10" />
+                      <circle id="heroRingFg" class="hero-ring-fg" cx="72" cy="72" r="58" fill="none" stroke="#34d399" stroke-width="10" />
+                    </svg>
+                    <div class="phone-ring-center">
+                      <span id="heroStageSavedPct" class="phone-counter mono">34%</span>
+                      <span id="heroStageSavedLbl" class="phone-counter-lbl">WATER SAVED</span>
+                    </div>
+                  </div>
+
+                  <div class="phone-widgets">
+                    <div class="widget-depth phone-widget">
+                      <span class="pw-ic" aria-hidden="true">💧</span>
+                      <div>
+                        <div class="pw-val" id="heroPhoneMins">160 min · after 21:00</div>
+                        <div class="pw-sub" id="heroPhoneMinsSub">ET₀ 4.1 mm/d · Zone A (2 ha)</div>
+                      </div>
+                    </div>
+                    <div class="widget-depth phone-widget">
+                      <span class="pw-ic" aria-hidden="true">🧂</span>
+                      <div>
+                        <div class="pw-val" id="heroPhoneFlush">+21% salt flush</div>
+                        <div class="pw-sub" id="heroPhoneFlushSub">Modeled ECe 4.0 dS/m</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="phone-home-bar" aria-hidden="true"></div>
+                </div>
+              </div>
+
+              <div class="hero-float-badge badge-top" aria-live="polite">
+                <span class="fb-ic" aria-hidden="true">🌊</span>
+                <div>
+                  <div class="fb-title">Saqi decision</div>
+                  <div class="fb-sub mono" id="heroBadgeVol">105,141 L today</div>
+                </div>
+              </div>
+
+              <div class="hero-float-badge badge-btm">
+                <span class="fb-ic" aria-hidden="true">🔊</span>
+                <div>
+                  <div class="fb-title">Worker voice note</div>
+                  <div class="fb-sub">Urdu · Arabic · Hindi</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="hero-stage-brand">
+            <span class="stage-wordmark text-card-oasis-matte notranslate" translate="no">SAQI</span>
+            <span class="hero-stage-ar notranslate" translate="no" lang="ar" dir="rtl">ساقي</span>
           </div>
         </div>
       </div>
@@ -335,32 +432,52 @@
     <div>
       <p class="section-kicker">Daily multi-valve schedule</p>
       <h2>Tonight's watering plan</h2>
-      <p class="lead" id="wxSource">Loading weather…</p>
+      <p class="lead today-sub" id="wxSource">Loading weather…</p>
     </div>
     <div class="today-actions">
+      <span class="today-night-pill" id="todayNightPill" hidden>🌙 <span id="todayNightTime"></span></span>
       <button class="btn sm ghost" id="refreshWx">↻ Refresh</button>
       <button class="btn sm" id="jumpVoice">🔊 Send SMS / Audio Plan</button>
     </div>
   </div>
-  <div id="dataConfidence" class="conf-bar"></div>
-  <div class="forecast" id="forecast"></div>
-  <div style="height:1rem"></div>
-  <div id="alerts"></div>
-  <div class="grid g2" id="decisions"></div>
 
-  <div class="card">
-    <h3>Saqi vs. Weather-Only vs. Fixed Habit — next 7 days</h3>
-    <p class="muted">Comparing against two baselines: (1) a <b>weather-only (ET₀ × Kc)</b> schedule with no salt management, and (2) the grower's <b>fixed daily habit</b>. This isolates both weather savings and the yield-protecting value of salt flushing.</p>
-    <div class="kpi" id="compareKpi"></div>
-    <div class="tablewrap" style="margin-top:.9rem"><table id="compareTable"></table></div>
-    <div id="compareChart" style="margin-top:.9rem"></div>
+  <div class="forecast today-forecast" id="forecast"></div>
+  <div id="alerts" class="today-alerts"></div>
+  <div class="grid g2 today-decisions" id="decisions"></div>
+
+  <details class="today-conf-details">
+    <summary>
+      <span class="today-conf-title">Data confidence &amp; sources</span>
+      <span class="today-conf-brief" id="todayConfBrief">Checking provenance…</span>
+    </summary>
+    <div id="dataConfidence" class="conf-bar" style="margin:.65rem 0 0"></div>
+  </details>
+
+  <div class="card today-compare-card">
+    <div class="today-compare-head">
+      <div>
+        <h3>7-day savings vs. guesswork</h3>
+        <p class="muted" style="margin:0;font-size:.86rem">Saqi vs. weather-only (no salt flush) and your fixed daily habit.</p>
+      </div>
+    </div>
+    <div class="kpi today-kpi" id="compareKpi"></div>
+    <div id="compareChart" class="today-chart"></div>
+    <details class="today-details-fold">
+      <summary>Detailed 7-day valve table &amp; FAO model notes</summary>
+      <div class="tablewrap" style="margin-top:.75rem"><table id="compareTable"></table></div>
+      <div id="todayModelNote" class="muted" style="margin-top:.65rem;font-size:.8rem"></div>
+    </details>
   </div>
 
-  <div class="card" id="voiceBox">
-    <h3>🔊 Voice note &amp; SMS / WhatsApp message preview</h3>
-    <p class="muted">The owner decides, the worker acts. Preview the message below, play it aloud on the phone, or open your phone's WhatsApp/SMS composer. <em>Note: SMS is a preview — automated push delivery requires an SMS gateway and sender-side connectivity.</em></p>
-    <div class="row" style="margin-bottom:.5rem">
-      <select id="voiceLang" style="max-width:220px"></select>
+  <div class="card today-voice-card" id="voiceBox">
+    <div class="today-voice-head">
+      <div>
+        <h3 style="margin:0">🔊 Worker voice note &amp; SMS preview</h3>
+        <p class="muted" style="margin:.2rem 0 0;font-size:.84rem">Owner decides, worker acts. SMS/WhatsApp opens device preview (gateway required for auto-send).</p>
+      </div>
+      <select id="voiceLang" style="max-width:210px"></select>
+    </div>
+    <div class="row" style="margin:.7rem 0 .6rem">
       <button class="btn sm" id="playAll">▶ Play all</button>
       <a class="btn sm alt" id="waLink" target="_blank" rel="noopener">WhatsApp Preview</a>
       <a class="btn sm ghost" id="smsLink">SMS Preview</a>
@@ -746,6 +863,9 @@
 <script src="js/app.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/shader-bg.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/gsap.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/ScrollTrigger.min.js"></script>
+<script src="js/hero-cinema.js"></script>
 <script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>
 </body>
 </html>
