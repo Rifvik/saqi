@@ -1,12 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "node -e \"const fs=require('fs'),p=require('path');fs.rmSync('dist',{recursive:true,force:true});fs.mkdirSync('dist',{recursive:true});for(const f of['index.html','styles.css','sw.js','manifest.json','icon.svg','js','vendor'])fs.cpSync(f,p.join('dist',f),{recursive:true});\"",
+  "buildCommand": "node build_dist.mjs",
   "outputDirectory": "dist",
   "functions": {
     "api/**/*.py": {
       "maxDuration": 120,
-      "excludeFiles": "{dist/**,js/**,vendor/**,tests/**,__pycache__/**,*.bat,*.sh,*.md,styles.css,index.html}"
+      "excludeFiles": "{dist/**,js/**,vendor/**,tests/**,__pycache__/**,build_dist.mjs,*.bat,*.sh,*.md,styles.css,index.html}"
     }
   },
   "rewrites": [

@@ -74,7 +74,7 @@ class SaqiHandler(SimpleHTTPRequestHandler):
         if any(p in BLOCKED_PARTS for p in parts):
             return True
         last = parts[-1].lower() if parts else ""
-        return last.endswith(BLOCKED_SUFFIXES) or last in {"requirements.txt", "vercel.json"}
+        return last.endswith(BLOCKED_SUFFIXES) or last in {"requirements.txt", "vercel.json", "build_dist.mjs"}
 
     # -- routing ----------------------------------------------------------------
     def end_headers(self):

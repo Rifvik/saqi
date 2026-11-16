@@ -286,7 +286,7 @@ class ServerHTTPTests(unittest.TestCase):
         self.assertEqual(rep_res["dir"], "rtl")
         self.assertEqual(len(rep_res["report"]["crops"]), 2)
 
-        for secret_path in ("/.env", "/server.py", "/ai_service.py", "/ai_http.py", "/requirements.txt", "/vercel.json", "/tests/engine.test.js"):
+        for secret_path in ("/.env", "/server.py", "/ai_service.py", "/ai_http.py", "/requirements.txt", "/vercel.json", "/build_dist.mjs", "/tests/engine.test.js"):
             code, _ = self._req(secret_path)
             self.assertEqual(code, 404, f"{secret_path} must be blocked")
 
@@ -326,6 +326,7 @@ class VercelHandlersTests(unittest.TestCase):
     def test_vercel_handlers_and_config_contract(self):
         cfg = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
         self.assertIsNone(cfg.get("framework"))
+        self.assertLessEqual(len(cfg.get("buildCommand") or ""), 256)
         self.assertEqual(cfg["outputDirectory"], "dist")
         self.assertIn("api/**/*.py", cfg["functions"])
 
