@@ -286,9 +286,108 @@ class ServerHTTPTests(unittest.TestCase):
         self.assertEqual(rep_res["dir"], "rtl")
         self.assertEqual(len(rep_res["report"]["crops"]), 2)
 
-        for secret_path in ("/.env", "/server.py", "/ai_service.py", "/requirements.txt", "/tests/engine.test.js"):
+        for secret_path in ("/.env", "/server.py", "/ai_service.py", "/ai_http.py", "/requirements.txt", "/vercel.json", "/tests/engine.test.js"):
             code, _ = self._req(secret_path)
             self.assertEqual(code, 404, f"{secret_path} must be blocked")
+
+
+class VercelHandlersTests(unittest.TestCase):
+    """Exercise api/ai/{status,chat,report}.py BaseHTTPRequestHandler classes locally."""
+
+    @classmethod
+    def _mount(cls, py_path: Path):
+        import importlib.util
+        from http.server import ThreadingHTTPServer
+
+        spec = importlib.util.spec_from_file_location(f"vercel_{py_path.stem}", py_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        svc = SaqiAIService(api_key="", model="saqi-demo-mock", client=MockGeminiClient())
+        svc.mock = True
+        bound = type(f"Bound_{py_path.stem}", (mod.handler,), {"service_override": svc})
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), bound)
+        th = threading.Thread(target=httpd.serve_forever, daemon=True)
+        th.start()
+        return httpd, httpd.server_address[1]
+
+    def _call(self, port: int, method: str, path: str, raw_body: bytes | None = None, headers: dict | None = None):
+        hdrs = dict(headers or {})
+        if raw_body is not None and "Content-Type" not in hdrs:
+            hdrs["Content-Type"] = "application/json"
+        req = Request(f"http://127.0.0.1:{port}{path}", data=raw_body, headers=hdrs, method=method)
+        try:
+            with urlopen(req, timeout=5) as r:
+                raw = r.read().decode("utf-8")
+                return r.status, (json.loads(raw) if raw else None)
+        except HTTPError as err:
+            raw = err.read().decode("utf-8")
+            return err.code, json.loads(raw)
+
+    def test_vercel_handlers_and_config_contract(self):
+        cfg = json.loads((ROOT / "vercel.json").read_text(encoding="utf-8"))
+        self.assertEqual(cfg["outputDirectory"], "dist")
+        self.assertIn("api/**/*.py", cfg["functions"])
+
+        for rel in ("api/ai/status.py", "api/ai/chat.py", "api/ai/report.py"):
+            self.assertTrue((ROOT / rel).is_file(), f"Missing {rel}")
+
+        h_status, p_status = self._mount(ROOT / "api/ai/status.py")
+        h_chat, p_chat = self._mount(ROOT / "api/ai/chat.py")
+        h_rep, p_rep = self._mount(ROOT / "api/ai/report.py")
+        try:
+            st, body = self._call(p_status, "GET", "/api/ai/status")
+            self.assertEqual(st, 200)
+            self.assertTrue(body["ok"])
+            self.assertTrue(body["configured"])
+            self.assertTrue(body["mock"])
+
+            st, _ = self._call(p_status, "POST", "/api/ai/status", b"{}")
+            self.assertEqual(st, 405)
+
+            st, opt = self._call(p_chat, "OPTIONS", "/api/ai/chat")
+            self.assertEqual(st, 204)
+            self.assertIsNone(opt)
+
+            chat_payload = json.dumps({"message": "Tonight plan?", "history": [], "context": SAMPLE_CONTEXT, "lang": "ur"}).encode("utf-8")
+            st, c_res = self._call(p_chat, "POST", "/api/ai/chat", chat_payload)
+            self.assertEqual(st, 200)
+            self.assertEqual(c_res["lang"], "ur")
+            self.assertEqual(c_res["dir"], "rtl")
+            self.assertIn("150 min", c_res["reply"])
+
+            st, bad = self._call(p_chat, "POST", "/api/ai/chat", b"{not-json")
+            self.assertEqual(st, 400)
+            self.assertFalse(bad["ok"])
+
+            st, big = self._call(p_chat, "POST", "/api/ai/chat", b"{" + b" " * (260 * 1024) + b"}")
+            self.assertEqual(st, 413)
+            self.assertFalse(big["ok"])
+
+            rep_payload = json.dumps({"context": SAMPLE_CONTEXT, "lang": "ar"}).encode("utf-8")
+            st, r_res = self._call(p_rep, "POST", "/api/ai/report", rep_payload)
+            self.assertEqual(st, 200)
+            self.assertEqual(r_res["lang"], "ar")
+            self.assertEqual(r_res["dir"], "rtl")
+            self.assertEqual(len(r_res["report"]["crops"]), 2)
+
+            # Unconfigured service degrades gracefully (configured=false, chat returns 503 without secret leak)
+            from http.server import ThreadingHTTPServer
+            h_unconf = ThreadingHTTPServer(("127.0.0.1", 0), type(
+                "BoundUnconf", (h_chat.RequestHandlerClass.__mro__[1],), {"service_override": SaqiAIService(api_key="")}
+            ))
+            unconf_th = threading.Thread(target=h_unconf.serve_forever, daemon=True)
+            unconf_th.start()
+            try:
+                st, no_key = self._call(h_unconf.server_address[1], "POST", "/api/ai/chat", chat_payload)
+                self.assertEqual(st, 503)
+                self.assertEqual(no_key["error"]["code"], "no_api_key")
+            finally:
+                h_unconf.shutdown()
+                h_unconf.server_close()
+        finally:
+            for httpd in (h_status, h_chat, h_rep):
+                httpd.shutdown()
+                httpd.server_close()
 
 
 if __name__ == "__main__":

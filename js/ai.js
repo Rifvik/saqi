@@ -122,7 +122,10 @@ async function aiFetch(path, body, timeoutMs = 75000) {
   let data = null;
   try { data = await res.json(); } catch (e) { }
   if (!data || typeof data !== 'object') {
-    throw Object.assign(new Error('Saqi AI server is not running here. Start the app with “python server.py”.'), { code: 'no_server' });
+    const isLocal = /^(localhost|127\.0\.0\.1|\[::1\]|)$/i.test(location.hostname);
+    throw Object.assign(new Error(isLocal
+      ? 'Saqi AI server is not running here. Start the app with “python server.py”.'
+      : 'Saqi AI endpoint is unavailable right now. All farm calculators still work.'), { code: 'no_server' });
   }
   if (!res.ok || data.ok === false) {
     throw Object.assign(new Error(data.error?.message || `AI request failed (${res.status}).`), { code: data.error?.code || 'ai_error' });
@@ -140,16 +143,21 @@ async function aiRefreshStatus() {
   const s = aiState.status;
   if (pill) {
     if (s.offline) { pill.className = 'pill bad'; pill.textContent = 'AI server not running'; pill.title = s.message; }
-    else if (s.mock) { pill.className = 'pill warn'; pill.textContent = 'Demo mode · no Gemini key'; pill.title = 'SAQI_AI_MOCK=1: offline demo replies'; }
+    else if (s.mock) { pill.className = 'pill warn'; pill.textContent = 'Demo mode · no Gemini key'; pill.title = 'SAQI_AI_MOCK=1: demo replies'; }
     else if (s.configured) { pill.className = 'pill'; pill.textContent = `AI ready · ${s.model}`; pill.title = 'Google Gemini'; }
     else { pill.className = 'pill bad'; pill.textContent = 'AI not configured'; pill.title = 'Set GEMINI_API_KEY on the server'; }
   }
   const note = $('#aiSetupNote');
   if (note) {
     note.hidden = Boolean(s.configured);
+    const isLocal = /^(localhost|127\.0\.0\.1|\[::1\]|)$/i.test(location.hostname);
     if (!s.configured) note.innerHTML = s.offline
-      ? '<b>AI features need the Saqi server.</b> Run <code>pip install -r requirements.txt</code>, set <code>GEMINI_API_KEY</code>, then <code>python server.py</code>. All other Saqi tools keep working without it.'
-      : '<b>Gemini is not configured.</b> Add <code>GEMINI_API_KEY</code> to the server environment (or a <code>.env</code> file) and restart <code>python server.py</code>.';
+      ? (isLocal
+        ? '<b>AI features need the Saqi server.</b> Run <code>pip install -r requirements.txt</code>, set <code>GEMINI_API_KEY</code>, then <code>python server.py</code>. All other Saqi tools keep working without it.'
+        : '<b>AI backend could not be reached right now.</b> All Saqi calculators, maps, and offline PDF tools continue working.')
+      : (isLocal
+        ? '<b>Gemini is not configured.</b> Add <code>GEMINI_API_KEY</code> to the server environment (or a <code>.env</code> file) and restart <code>python server.py</code>.'
+        : '<b>Gemini is not configured.</b> Set <code>GEMINI_API_KEY</code> (or <code>SAQI_AI_MOCK=1</code> for demo replies) in your Vercel Environment Variables and redeploy.');
   }
   return s;
 }

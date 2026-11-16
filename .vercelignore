@@ -1,0 +1,19 @@
+# Secrets & local-only files (set GEMINI_API_KEY in Vercel Environment Variables)
+.env
+.env.*
+.env.example
+
+# Build & local caches
+dist/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.git/
+
+# Tests, docs & local OS launchers (never needed at Vercel runtime)
+tests/
+start-saqi.bat
+start-saqi.sh
+README.md
+server.py

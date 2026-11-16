@@ -12,21 +12,28 @@ The API key stays on the server. The browser only ever talks to /api/ai/*.
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 import threading
-import time
-from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
+from ai_http import (
+    MAX_BODY_BYTES,
+    RATE_LIMIT_PER_MIN,
+    RateLimiter as _RateLimiter,
+    build_service,
+    send_error as _send_error,
+    send_json as _send_json,
+    send_options as _send_options,
+    serve_ai_post,
+    serve_ai_status,
+)
+
 ROOT = Path(__file__).resolve().parent
-MAX_BODY_BYTES = 256 * 1024
-RATE_LIMIT_PER_MIN = 30
 BLOCKED_SUFFIXES = (".py", ".pyc", ".env", ".md~")
-BLOCKED_PARTS = {"tests", "__pycache__", "node_modules"}
+BLOCKED_PARTS = {"tests", "__pycache__", "node_modules", "dist"}
 
 
 def load_dotenv(path: Path) -> None:
@@ -43,35 +50,6 @@ def load_dotenv(path: Path) -> None:
             os.environ[key] = value
 
 
-def build_service():
-    from ai_service import SaqiAIService
-    if not os.environ.get("GEMINI_API_KEY") and os.environ.get("SAQI_AI_MOCK") == "1":
-        from ai_mock import MockGeminiClient
-        svc = SaqiAIService(api_key="", model="saqi-demo-mock", client=MockGeminiClient())
-        svc.mock = True
-        return svc
-    svc = SaqiAIService()
-    svc.mock = False
-    return svc
-
-
-class _RateLimiter:
-    def __init__(self, per_minute: int):
-        self.per_minute = per_minute
-        self.hits: dict[str, list[float]] = {}
-        self.lock = threading.Lock()
-
-    def allow(self, key: str) -> bool:
-        now = time.monotonic()
-        with self.lock:
-            hits = [t for t in self.hits.get(key, []) if now - t < 60]
-            ok = len(hits) < self.per_minute
-            if ok:
-                hits.append(now)
-            self.hits[key] = hits
-            return ok
-
-
 class SaqiHandler(SimpleHTTPRequestHandler):
     service = None           # set in make_server
     limiter = _RateLimiter(RATE_LIMIT_PER_MIN)
@@ -84,17 +62,10 @@ class SaqiHandler(SimpleHTTPRequestHandler):
         sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
 
     def _send_json(self, status: int, payload: dict) -> None:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
-        self.send_header("X-Content-Type-Options", "nosniff")
-        self.end_headers()
-        self.wfile.write(body)
+        _send_json(self, status, payload)
 
     def _error(self, status: int, code: str, message: str) -> None:
-        self._send_json(status, {"ok": False, "error": {"code": code, "message": message}})
+        _send_error(self, status, code, message)
 
     def _is_blocked(self, path: str) -> bool:
         parts = [p for p in unquote(urlparse(path).path).split("/") if p]
@@ -103,7 +74,7 @@ class SaqiHandler(SimpleHTTPRequestHandler):
         if any(p in BLOCKED_PARTS for p in parts):
             return True
         last = parts[-1].lower() if parts else ""
-        return last.endswith(BLOCKED_SUFFIXES) or last in {"requirements.txt"}
+        return last.endswith(BLOCKED_SUFFIXES) or last in {"requirements.txt", "vercel.json"}
 
     # -- routing ----------------------------------------------------------------
     def end_headers(self):
@@ -111,12 +82,18 @@ class SaqiHandler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-cache")
         super().end_headers()
 
+    def do_OPTIONS(self):
+        path = urlparse(self.path).path
+        if path == "/api/ai/status":
+            return _send_options(self, "GET, OPTIONS")
+        if path in ("/api/ai/chat", "/api/ai/report"):
+            return _send_options(self, "POST, OPTIONS")
+        return self._error(404, "not_found", "Not found.")
+
     def do_GET(self):
         path = urlparse(self.path).path
         if path == "/api/ai/status":
-            st = self.service.status()
-            st["mock"] = bool(getattr(self.service, "mock", False))
-            return self._send_json(200, {"ok": True, **st})
+            return serve_ai_status(self, self.service)
         if path.startswith("/api/"):
             return self._error(404, "not_found", "Unknown API route.")
         if self._is_blocked(self.path):
@@ -132,36 +109,11 @@ class SaqiHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path not in ("/api/ai/chat", "/api/ai/report"):
-            return self._error(404, "not_found", "Unknown API route.")
-        if not self.limiter.allow(self.client_address[0]):
-            return self._error(429, "rate_limited", "Too many AI requests. Please wait a minute.")
-        try:
-            length = int(self.headers.get("Content-Length") or 0)
-        except ValueError:
-            length = 0
-        if length <= 0 or length > MAX_BODY_BYTES:
-            return self._error(413 if length > MAX_BODY_BYTES else 400, "bad_request", "Request body missing or too large.")
-        try:
-            payload = json.loads(self.rfile.read(length).decode("utf-8"))
-            if not isinstance(payload, dict):
-                raise ValueError
-        except (ValueError, UnicodeDecodeError):
-            return self._error(400, "bad_json", "Request body must be a JSON object.")
-
-        from ai_service import AIServiceError
-        try:
-            if path == "/api/ai/chat":
-                result = self.service.chat(payload.get("message"), payload.get("history"),
-                                           payload.get("context"), payload.get("lang"))
-            else:
-                result = self.service.report(payload.get("context"), payload.get("lang"))
-        except AIServiceError as exc:
-            return self._error(exc.status, exc.code, str(exc))
-        except Exception:  # never leak internals
-            return self._error(500, "server_error", "Unexpected server error.")
-        result["mock"] = bool(getattr(self.service, "mock", False))
-        return self._send_json(200, {"ok": True, **result})
+        if path == "/api/ai/chat":
+            return serve_ai_post(self, "chat", self.service, self.limiter)
+        if path == "/api/ai/report":
+            return serve_ai_post(self, "report", self.service, self.limiter)
+        return self._error(404, "not_found", "Unknown API route.")
 
 
 def make_server(host: str, port: int, service=None, limiter=None) -> ThreadingHTTPServer:

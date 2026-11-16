@@ -31,7 +31,23 @@ python server.py
 ```
 
 Open **`http://127.0.0.1:8765/index.html`** in your browser.  
-*(On Windows if `python` is mapped to an alias, use `py -3 server.py`; without AI features, `npx --yes serve -l 8765 .` works cleanly or set `SAQI_AI_MOCK=1` for offline AI UI preview.)*
+*(On Windows if `python` is mapped to an alias, use `py -3 server.py`; for static-only local testing with AI disabled, `npx --yes serve -l 8765 .` works cleanly; set `SAQI_AI_MOCK=1` for offline AI demo replies without a Gemini key.)*
+
+---
+
+### Deploy on Vercel (Static Frontend + Python Serverless AI)
+
+1. Push the repository to GitHub (never commit `.env`; `.gitignore` and `.vercelignore` exclude it automatically).
+2. Import the repository into **Vercel** (`Framework Preset: Other` — `vercel.json` builds static files into `dist/` and deploys `/api/ai/*.py` serverless endpoints on Python 3.12).
+3. Under **Project Settings → Environment Variables**, configure:
+   - `GEMINI_API_KEY` *(required for live Gemini AI chat & reports)*
+   - `GEMINI_MODEL` *(optional — defaults to `gemini-3.8-flash` with Flash fallbacks)*
+   - `SAQI_AI_MOCK` *(optional — set `1` if deploying a demo without `GEMINI_API_KEY`)*
+4. Click **Deploy**.
+5. Open `https://<your-project>.vercel.app/` (or `/index.html`) and verify:
+   - Farm calculators, Today, My Farm map, and Offline PDF work even if no AI env vars are set
+   - `https://<your-project>.vercel.app/api/ai/status` returns JSON (`{"ok": true, "configured": ..., "model": ...}`)
+   - Chat & Farm Report work end-to-end when `GEMINI_API_KEY` (or `SAQI_AI_MOCK=1`) is set.
 
 ---
 
@@ -47,10 +63,13 @@ Open **`http://127.0.0.1:8765/index.html`** in your browser.
 | [`js/app.js`](js/app.js) | App state, weather fetching, scroll motion & UI wiring | `localStorage` persistence (`saqi-state-v2`, `saqi-theme-v2`, `saqi-site-lang`), Open-Meteo 7-day forecast + Hargreaves fallback, `computeAll`, `renderToday`, `renderFarm`, `initHomeSim`, `initScrollMotion`, `initTranslatorUI`, `speechSynthesis` |
 | [`js/ai.js`](js/ai.js) | AI Chatbot & PDF Report client | Builds verified farm context from live SAQI calculations, manages session chat history, reuses existing selected site language, renders multilingual RTL/LTR report previews, and builds A4 PDF exports (`html2canvas-pro` + `jsPDF`) |
 | [`ai_service.py`](ai_service.py) | Shared Gemini AI service (`google-genai`) | Single shared service powering both `/api/ai/chat` and `/api/ai/report` using `gemini-3.8-flash` (with automatic Flash fallback on transient capacity spikes), server-side `GEMINI_API_KEY`, 44-language support, and fabricated-number grounding validation |
-| [`server.py`](server.py) | Local web server + `/api/ai/*` proxy | Serves static files, loads optional git-ignored `.env`, exposes `/api/ai/status`, `/api/ai/chat`, `/api/ai/report`, blocks `.env`/`.py`/`tests/` downloads, rate-limits requests |
+| [`ai_http.py`](ai_http.py) | Shared HTTP + rate-limit helper | Reused by both local `server.py` and Vercel `api/ai/*.py`: `MAX_BODY_BYTES` (256 KB), `RateLimiter`, proxy IP extraction, `serve_ai_status`, `serve_ai_post`, safe error formatting |
+| [`api/ai/`](api/ai/) | Vercel Python serverless endpoints | `status.py`, `chat.py`, `report.py` (`BaseHTTPRequestHandler` subclasses) + `_common.py` adapter exposing `/api/ai/status`, `/api/ai/chat`, `/api/ai/report` on Vercel |
+| [`server.py`](server.py) | Local web server + `/api/ai/*` proxy | Serves static files, loads optional git-ignored `.env`, exposes `/api/ai/status`, `/api/ai/chat`, `/api/ai/report`, blocks `.env`/`.py`/`tests/` downloads |
+| [`vercel.json`](vercel.json) & [`.python-version`](.python-version) | Vercel deployment config | Stages static assets into `dist/`, excludes backend/tests from static CDN & Lambda bundles, sets Python 3.12 runtime and API security/cache headers |
 | [`js/shader-bg.js`](js/shader-bg.js) | Theme-adaptive WebGL background | 16-layer warped plasma wave shader syncing smoothly between Light Alabaster and Dark Obsidian themes |
 | [`vendor/`](vendor/) | Vendored zero-CDN offline libraries | Local copies of GSAP, ScrollTrigger, `html2canvas-pro`, `jsPDF`, and UTF-8 `qrcode.js` so offline field use never depends on third-party CDNs |
-| [`sw.js`](sw.js) | Service Worker cache | Caches core app shell + vendored `vendor/*` files (`saqi-v23`) while bypassing `/api/*` for live AI calls |
+| [`sw.js`](sw.js) | Service Worker cache | Caches core app shell + vendored `vendor/*` files (`saqi-v24`) while bypassing `/api/*` for live AI calls |
 | [`start-saqi.bat`](start-saqi.bat) & [`start-saqi.sh`](start-saqi.sh) | One-command launch & verify | Runs JS engine & Python unit tests, then launches the local Saqi server on port `8765` |
 | [`tests/engine.test.js`](tests/engine.test.js) | Automated JS unit tests | Zero-dependency `node:test` suite verifying FAO-29/56 equations, drainage caps, zero-flow guards, blending, and GIS geometry |
 | [`tests/test_ai.py`](tests/test_ai.py) | Automated Python AI & server tests | `unittest` suite testing `SaqiAIService`, Gemini error sanitization, number validation, multilingual/RTL output, and `server.py` security |
@@ -177,10 +196,15 @@ Open **`http://127.0.0.1:8765/index.html`** in your browser.
 Run syntax checks and both the automated Node agronomic engine tests and Python AI/server tests:
 
 ```bash
-node --check js/data.js js/engine.js js/tools.js js/app.js js/ai.js js/shader-bg.js sw.js
+node --check js/data.js js/engine.js js/tools.js js/app.js js/ai.js js/hero-cinema.js js/shader-bg.js sw.js
 node --test tests/engine.test.js
 python -m unittest discover -s tests -v
 ```
+
+> **Serverless Caveats (Vercel):**
+> - In-memory rate limiting (`30 req/min/IP` in `ai_http.py`) applies per warm serverless instance, not globally across edge regions. Use Vercel WAF / Rate Limiting Rules in production if strict global quotas are required.
+> - First request to a cold Python container may incur a short cold-start delay (`~1–2 s`); subsequent chat/report calls reuse the cached `genai.Client`.
+> - Free Hobby builds/functions must stay under Vercel's bundle size limits (`excludeFiles` + `.vercelignore` strip `js/`, `vendor/`, `tests/` from Python Lambda packages automatically).
 
 > **Scope & Offline Behavior:** After first visit, the Service Worker (`sw.js`) caches HTML/CSS/JS core assets and `localStorage` caches forecasts with Hargreaves $\text{ET}_0$ offline fallback. External map tiles (Esri/OSM), Google Fonts, Google Website Translator, and live satellite/public APIs require connectivity; SMS/WhatsApp buttons open device composers as previews (automated push SMS requires a gateway).
 >
