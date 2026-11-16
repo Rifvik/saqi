@@ -77,11 +77,24 @@ function climatologyDays(loc) {
     return { date, tmax, tmin, et0: +Engine.hargreavesET0(tmax, tmin, loc.lat, doy(date)).toFixed(1), wind: 15, rain: 0 };
   });
 }
+let simOffline = false;
+try { simOffline = sessionStorage.getItem('saqi-sim-offline') === '1'; } catch (e) { }
+let expandWhyIdx = null;
+let voiceValveFilter = 'all';
+let showWorkerQr = false;
+let simFromLive = false;
+
 async function loadWeather(force) {
   const loc = LOCATIONS[state.location] || LOCATIONS.alain;
   if (state.scenario !== 'live') { wx = { source: SCENARIOS[state.scenario].label, kind: 'scenario', days: scenarioDays(state.scenario) }; return; }
   const key = 'saqi-wx-' + state.location + '-' + loc.lat.toFixed(2) + '-' + loc.lon.toFixed(2);
   let cached = null; try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) { }
+  if (simOffline || !navigator.onLine) {
+    const prefix = simOffline ? 'Airplane-mode test' : 'Offline';
+    if (cached) wx = { ...cached, kind: 'cached', source: `${prefix}: using forecast saved ${new Date(cached.fetchedAt).toLocaleString('en-GB')}` };
+    else wx = { source: `${prefix}, no saved forecast: using climate normals + Hargreaves ET₀ (works with zero internet)`, kind: 'clim', days: climatologyDays(loc) };
+    return;
+  }
   if (!force && cached && Date.now() - cached.fetchedAt < 3 * 3600e3) { wx = { ...cached, kind: 'live' }; return; }
   try {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${loc.lat}&longitude=${loc.lon}&daily=temperature_2m_max,temperature_2m_min,et0_fao_evapotranspiration,precipitation_sum,wind_speed_10m_max&timezone=auto&forecast_days=7`;
@@ -98,12 +111,23 @@ async function loadWeather(force) {
   }
 }
 function updateNet() {
-  const p = $('#netPill'); const on = navigator.onLine;
-  let txt = on ? '● Online' : '● Offline', cls = on ? 'ok' : 'warn';
-  if (wx && wx.kind === 'cached') { txt = '● Offline · saved forecast'; cls = 'warn'; }
-  if (wx && wx.kind === 'clim') { txt = '● Offline · climate backup'; cls = 'bad'; }
-  if (wx && wx.kind === 'scenario') { txt = '● Scenario data'; cls = ''; }
-  p.textContent = txt; p.className = 'pill ' + cls;
+  const p = $('#netPill'); const on = navigator.onLine && !simOffline;
+  let txt = on ? '● Online' : (simOffline ? '✈️ Airplane mode' : '● Offline'), cls = on ? 'ok' : 'warn';
+  if (wx && wx.kind === 'cached') { txt = simOffline ? '✈️ Airplane mode · saved' : '● Offline · saved forecast'; cls = 'warn'; }
+  if (wx && wx.kind === 'clim') { txt = simOffline ? '✈️ Airplane mode · Hargreaves' : '● Offline · climate backup'; cls = 'bad'; }
+  if (wx && wx.kind === 'scenario' && !simOffline) { txt = '● Scenario data'; cls = ''; }
+  if (p) { p.textContent = txt; p.className = 'pill ' + cls; }
+  const chip = $('#todayOfflineChip');
+  if (chip) {
+    const isOfflineView = simOffline || !navigator.onLine || (wx && (wx.kind === 'cached' || wx.kind === 'clim'));
+    chip.hidden = !isOfflineView;
+    if (isOfflineView) {
+      chip.className = 'pill ' + (wx?.kind === 'clim' ? 'warn' : 'ok');
+      chip.textContent = simOffline
+        ? (wx?.kind === 'cached' ? '✈️ Airplane mode · Cached forecast' : '✈️ Airplane mode · Zero-network ET₀')
+        : (wx?.kind === 'cached' ? '📶 Offline · Cached forecast' : '📶 Offline · Climate ET₀ backup');
+    }
+  }
 }
 
 /* ---------- core computation ---------- */
@@ -245,7 +269,7 @@ function renderToday() {
       <div class="big">${invalidFlow ? '<span class="bad">Set block flow &gt; 0 m³/h</span>' : skip ? 'No water today' : `${fmt(mins)} min <span class="after">${isNightWindow ? '🌙 ' : ''}after ${esc(state.startTime)}</span>`}</div>
       <div class="metrics">${fmt(t.m3, 1)} m³ · ${fmt(t.grossMm, 1)} mm · ${fmt(r.flow, 1)} m³/h ${SYSTEMS[b.system].name.toLowerCase()}</div>
       <div class="habit-line">Habit ${b.habitMin} min (${fmt(habitM3, 1)} m³) · ${habitTxt}</div>
-      <details class="today-why-fold">
+      <details class="today-why-fold"${r.bi === expandWhyIdx ? ' open' : ''}>
         <summary>Why this runtime?</summary>
         <div class="why">ET₀ ${fmt(d0.et0, 1)} mm × Kc ${fmt(t.kc, 2)} (${t.stage}) = <b>${fmt(t.etc, 1)} mm</b> crop ET${t.effRain ? ` − ${fmt(t.effRain, 1)} mm rain` : ''}${t.preHeat ? ' · <b>+10% pre-heatwave buffer</b>' : ''}
         · salt flush <b>+${pct(flush)}</b>${t.soilReclaim > 0 ? ' (incl. bounded sensor ECe reclamation heuristic)' : ''} (modeled root-zone ECe <b>${fmt(t.modeledECe, 1)} dS/m</b> vs crop ECe threshold ${r.crop.ecThr} dS/m; drainage: ${drainage})
@@ -253,8 +277,10 @@ function renderToday() {
       </details>
     </div>`;
   }).join('');
+  const wizInp = $('#ecWizInput');
+  if (wizInp && document.activeElement !== wizInp) wizInp.value = ecw.toFixed(1);
 
-  // Band 4: 3-way compare (KPIs + clean visual bars; heavy table collapsed inside <details>)
+  // Band 4: 3-way compare (Beat the guess story + KPIs + 7-day salt dot bars)
   const tO = sum(results.map(r => r.weekOurs));
   const tW = sum(results.map(r => r.weekWeatherOnly));
   const tH = sum(results.map(r => r.weekHabit));
@@ -265,6 +291,24 @@ function renderToday() {
   const habitWaterSaved = tH - tO;
   const habitYieldVal = sum(results.map(r => (r.eo.y - r.eh.y) * r.rev));
   const habitNetAED = habitWaterSaved * cost + habitYieldVal;
+
+  const totRev = sum(results.map(r => r.rev)) || 1;
+  const saqiYield = sum(results.map(r => r.eo.y * r.rev)) / totRev;
+  const wxYield = sum(results.map(r => r.ew.y * r.rev)) / totRev;
+  const habitYield = sum(results.map(r => r.eh.y * r.rev)) / totRev;
+  const accumValves = results.filter(r => r.eo.saltTrend === 'increasing').length;
+
+  const storyEl = $('#compareStory');
+  if (storyEl) {
+    const leadStory = habitWaterSaved >= 0
+      ? `<strong>Beat the guess:</strong> Saqi uses <b>${fmt(habitWaterSaved)} m³ less water</b> (${pct(tH > 0 ? habitWaterSaved / tH : 0)} saved vs. ${fmt(tH)} m³ fixed habit) while holding <b>${pct(saqiYield)} est. yield</b> (weather-only drops to <b>${pct(wxYield)}</b> without salt flush).`
+      : `<strong>Stop heat &amp; salt loss:</strong> Fixed habit (${fmt(tH)} m³) under-waters this week (${pct(habitYield)} est. yield). Saqi adds <b>+${fmt(Math.abs(habitWaterSaved))} m³</b> to hold <b>${pct(saqiYield)} est. yield</b> (weather-only: <b>${pct(wxYield)}</b>).`;
+    storyEl.innerHTML = `<div>${leadStory}</div>
+      <div class="compare-story-pills">
+        <span class="pill ${habitNetAED >= 0 ? 'ok' : 'warn'}">${habitNetAED >= 0 ? '+' : '−'}${fmt(Math.abs(habitNetAED))} AED net vs. habit</span>
+        <span class="pill ${accumValves ? 'warn' : 'ok'}">${accumValves ? `${accumValves} valve salt rising` : '7-day salt safe'}</span>
+      </div>`;
+  }
 
   $('#compareKpi').innerHTML = `
     <div><span>Saqi vs. Fixed Habit</span><b class="${habitWaterSaved >= 0 ? 'good' : 'warn'}">${habitWaterSaved >= 0 ? '−' : '+'}${fmt(Math.abs(habitWaterSaved))} m³</b><span>${habitWaterSaved >= 0 ? `saved (${pct(tH > 0 ? habitWaterSaved / tH : 0)} less)` : `more (${pct(tH > 0 ? Math.abs(habitWaterSaved) / tH : 0)}) — protects yield from heat/salt under-watering`} · ${fmt(tO)} vs ${fmt(tH)} m³</span></div>
@@ -285,24 +329,32 @@ function renderToday() {
     }).join('');
 
   const maxV = Math.max(...results.map(r => Math.max(r.weekOurs, r.weekWeatherOnly, r.weekHabit)), 1);
-  $('#compareChart').innerHTML = results.map(r => `<div class="today-bar-row"><div class="today-bar-head"><span>${r.bi + 1}. ${esc(r.b.name)}</span><span class="muted">${trendLabel(r.eo.saltTrend)}${r.ew.saltTrend === 'increasing' ? ' · <span class="bad">↑ Wx-only salt rises</span>' : ''}</span></div>
+  $('#compareChart').innerHTML = results.map(r => {
+    const dots = r.daily.map((d, di) => {
+      const cls = (d.unsuitable || d.modeledECe > r.crop.ecThr) ? 'bad' : (d.drainageBlocked || d.modeledECe > r.crop.ecThr * 0.85) ? 'warn' : '';
+      return `<i class="salt-dot ${cls}" title="Day ${di + 1}: ECe ${fmt(d.modeledECe, 1)} / ${r.crop.ecThr} dS/m"></i>`;
+    }).join('');
+    return `<div class="today-bar-row"><div class="today-bar-head"><span>${r.bi + 1}. ${esc(r.b.name)}<span class="salt-dot-strip" title="7-day modeled salt safety (green safe, amber approaching crop threshold, red above threshold)">${dots}</span></span><span class="muted">${trendLabel(r.eo.saltTrend)}${r.ew.saltTrend === 'increasing' ? ' · <span class="bad">↑ Wx-only salt rises</span>' : ''}</span></div>
     <div class="row"><span class="today-bar-lbl">Saqi</span><div class="bar" style="flex:1"><i style="width:${r.weekOurs / maxV * 100}%"></i></div><span class="today-bar-val mono">${fmt(r.weekOurs)} m³</span></div>
     <div class="row"><span class="today-bar-lbl">Wx-only</span><div class="bar" style="flex:1"><i style="width:${r.weekWeatherOnly / maxV * 100}%;background:var(--warn)"></i></div><span class="today-bar-val mono">${fmt(r.weekWeatherOnly)} m³</span></div>
-    <div class="row"><span class="today-bar-lbl">Habit</span><div class="bar" style="flex:1"><i style="width:${r.weekHabit / maxV * 100}%;background:var(--destructive)"></i></div><span class="today-bar-val mono">${fmt(r.weekHabit)} m³</span></div></div>`).join('');
+    <div class="row"><span class="today-bar-lbl">Habit</span><div class="bar" style="flex:1"><i style="width:${r.weekHabit / maxV * 100}%;background:var(--destructive)"></i></div><span class="today-bar-val mono">${fmt(r.weekHabit)} m³</span></div></div>`;
+  }).join('');
   if ($('#todayModelNote')) {
-    $('#todayModelNote').innerHTML = `Model note: Weekly water balance constrained by drainage capacity (${drainage}). Effective leaching sets steady-state modeled root-zone ECe (FAO-29 Rhoades); modeled ECe → estimated relative yield (Maas–Hoffman); water deficit → Ky (FAO-33). All yields and ECe values are <b>estimates</b>, not guaranteed field yields.`;
+    const habEx = state.blocks[0] ? `${state.blocks[0].habitMin} min/day on ${state.blocks[0].name}` : '240 min/day';
+    $('#todayModelNote').innerHTML = `Model note: Weekly water balance constrained by drainage capacity (${drainage}). Effective leaching sets steady-state modeled root-zone ECe (FAO-29 Rhoades); modeled ECe → estimated relative yield (Maas–Hoffman); water deficit → Ky (FAO-33). Fixed habit baseline uses farmer-entered timer schedules per valve (e.g. ${esc(habEx)}, editable in My farm). All yields and ECe values are <b>estimates</b>, not guaranteed field yields.`;
   }
 
   renderVoice();
 }
 
 /* ---------- Voice ---------- */
-function voiceLines(lang) {
+function voiceLines(lang, valveFilter = voiceValveFilter) {
   const L = k => PHRASES[k][lang];
   const lines = [];
   const hotSoon = wx.days.slice(0, 3).some(d => d.tmax >= +state.heatThreshold);
   if (hotSoon) lines.push(L('heat'));
-  results.forEach(r => {
+  const subset = valveFilter === 'all' ? results : results.filter(r => String(r.bi) === String(valveFilter));
+  subset.forEach(r => {
     const v = r.bi + 1;
     if (r.today.invalidFlow) {
       lines.push(L('flowZero').replace('{v}', v));
@@ -324,21 +376,77 @@ function speak(text, lang, onend) {
   if (onend) u.onend = onend;
   speechSynthesis.speak(u);
 }
+function makeOfflineQrSvg(text, cellSize = 4) {
+  if (typeof window.qrcode !== 'function') return '';
+  try {
+    if (window.qrcode.stringToBytesFuncs?.['UTF-8']) {
+      window.qrcode.stringToBytes = window.qrcode.stringToBytesFuncs['UTF-8'];
+    }
+    const qr = window.qrcode(0, 'M');
+    qr.addData(text);
+    qr.make();
+    return qr.createSvgTag({ cellSize, margin: 2 });
+  } catch (e) { return ''; }
+}
 function renderVoice() {
-  const lang = state.lang; const lines = voiceLines(lang);
+  const lang = state.lang;
+  const vSel = $('#voiceValve');
+  if (vSel) {
+    if (voiceValveFilter !== 'all' && !results.some(r => String(r.bi) === String(voiceValveFilter))) voiceValveFilter = 'all';
+    vSel.innerHTML = `<option value="all">All valves (${results.length})</option>` +
+      results.map(r => `<option value="${r.bi}">Valve ${r.bi + 1} · ${esc(r.b.name)}</option>`).join('');
+    vSel.value = String(voiceValveFilter);
+    vSel.onchange = () => { voiceValveFilter = vSel.value; renderVoice(); };
+  }
+  const lines = voiceLines(lang, voiceValveFilter);
   const sel = $('#voiceLang');
   if (!sel.options.length) {
     sel.innerHTML = Object.entries(LANGS).map(([k, l]) => `<option value="${k}">${l.name}</option>`).join('');
     sel.onchange = () => { state.lang = sel.value; save(); renderVoice(); };
-    $('#playAll').onclick = () => { speechSynthesis.cancel(); speak(voiceLines(state.lang).join(' '), state.lang); };
-    $('#copyVoice').onclick = () => { navigator.clipboard?.writeText(voiceLines(state.lang).join('\n')).then(() => toast('Copied')); };
   }
   sel.value = lang;
+  $('#playAll').onclick = () => { speechSynthesis.cancel(); speak(voiceLines(state.lang, voiceValveFilter).join(' '), state.lang); };
+  $('#copyVoice').onclick = () => { navigator.clipboard?.writeText(voiceLines(state.lang, voiceValveFilter).join('\n')).then(() => toast('Copied')); };
   $('#voiceLines').innerHTML = lines.map((l, i) => `<div class="voice-line" dir="${LANGS[lang].dir}"><button class="btn sm ghost" data-say="${i}">▶</button><span class="txt">${esc(l)}</span></div>`).join('');
   $$('[data-say]').forEach(b => b.onclick = () => { speechSynthesis.cancel(); speak(lines[+b.dataset.say], lang); });
   const msg = lines.join('\n');
   $('#waLink').href = 'https://wa.me/?text=' + encodeURIComponent(msg);
   $('#smsLink').href = 'sms:?&body=' + encodeURIComponent(msg);
+
+  const qrBtn = $('#qrBtn'), qrBox = $('#workerQrBox');
+  if (qrBtn) {
+    qrBtn.textContent = showWorkerQr ? '✕ Hide QR Card' : '📱 Worker QR Card';
+    qrBtn.onclick = () => { showWorkerQr = !showWorkerQr; renderVoice(); };
+  }
+  if (qrBox) {
+    qrBox.hidden = !showWorkerQr;
+    if (showWorkerQr) {
+      const locName = (LOCATIONS[state.location] || LOCATIONS.alain).name;
+      const qrText = `SAQI · ${locName} (${isoDaysAgo(0)})\n` + msg;
+      const svg = makeOfflineQrSvg(qrText, 4);
+      const scopeLabel = voiceValveFilter === 'all' ? 'All valves' : `Valve ${Number(voiceValveFilter) + 1}`;
+      qrBox.innerHTML = `${svg ? `<div class="worker-qr-svg" aria-label="Offline worker QR code">${svg}</div>` : ''}
+        <div class="worker-qr-meta">
+          <h4>Offline Worker QR Card · ${esc(scopeLabel)} (${esc(LANGS[lang].name)})</h4>
+          <p class="muted" style="margin:0;font-size:.82rem">Scans on any phone camera with zero mobile data — plain text worker instructions inside the QR code.</p>
+          <pre dir="${LANGS[lang].dir}">${esc(qrText)}</pre>
+          <div class="row" style="gap:.4rem">
+            <button type="button" class="btn sm" id="printQrBtn">🖨️ Print QR slip</button>
+            <button type="button" class="btn sm ghost" id="copyQrBtn">Copy slip text</button>
+          </div>
+        </div>`;
+      $('#printQrBtn').onclick = () => {
+        document.documentElement.classList.add('printing-qr');
+        window.print();
+        setTimeout(() => document.documentElement.classList.remove('printing-qr'), 500);
+      };
+      $('#copyQrBtn').onclick = () => {
+        navigator.clipboard?.writeText(qrText).then(() => toast('Worker QR slip copied'));
+      };
+    } else {
+      qrBox.innerHTML = '';
+    }
+  }
 }
 
 /* ---------- Farm ---------- */
@@ -456,6 +564,13 @@ function renderHomeSim() {
   if ($('#cmpSavedNote')) $('#cmpSavedNote').innerHTML = saved
     ? `<span id="cmpSavedL">${fmt(absSaved)}</span> litres stay available vs. habit, while protecting salt balance vs. weather-only.`
     : `<span id="cmpSavedL">${fmt(absSaved)}</span> extra litres prevent crop collapse when 240-min habit under-waters (${d.habitYieldPct}% est. yield).`;
+  const etBadge = $('#simEt0Badge');
+  if (etBadge) {
+    const todayLive = wx?.days?.[0];
+    etBadge.textContent = simFromLive && todayLive
+      ? `Seeded from Today (${fmt(todayLive.tmax)}°C · ECw ${ecw.toFixed(1)}): Hargreaves ${d.et0} vs Live ET₀ ${fmt(todayLive.et0, 1)} mm/d`
+      : `Scenario ET₀ (Hargreaves · ${d.et0} mm/d)`;
+  }
   if (window.HeroCinema) window.HeroCinema.sync(d);
 }
 function initHomeSim() {
@@ -467,12 +582,14 @@ function initHomeSim() {
   };
   $$('#simScenarios button').forEach(b => b.onclick = () => {
     const sc = b.dataset.sim;
+    simFromLive = false;
     simCond = { ...Engine.HOME_SCENARIOS[sc].conditions };
     $$('#simScenarios button').forEach(x => x.classList.toggle('active', x === b));
     syncSliders(); renderHomeSim();
   });
   const bindSlider = (id, key) => $(id).addEventListener('input', e => {
     const val = +e.target.value;
+    simFromLive = false;
     simCond[key] = val;
     if (key === 'ecw') simCond.salinity = val;
     $$('#simScenarios button').forEach(x => x.classList.remove('active'));
@@ -480,6 +597,20 @@ function initHomeSim() {
   });
   bindSlider('#slTemp', 'temperature'); bindSlider('#slSal', 'ecw');
   bindSlider('#slMoist', 'moisture'); bindSlider('#slHum', 'humidity');
+  const seedBtn = $('#seedHomeLiveBtn');
+  if (seedBtn) {
+    seedBtn.onclick = () => {
+      const d0 = wx?.days?.[0];
+      if (!d0) { toast('Weather not ready yet'); return; }
+      const tClamped = Math.min(55, Math.max(25, Math.round(d0.tmax)));
+      const ecClamped = Math.min(10, Math.max(0.5, +(+state.water.ec || 3.0).toFixed(1)));
+      simCond = { ...simCond, temperature: tClamped, ecw: ecClamped, salinity: ecClamped };
+      simFromLive = true;
+      $$('#simScenarios button').forEach(x => x.classList.remove('active'));
+      syncSliders(); renderHomeSim();
+      toast(`Zone A seeded from Today (${tClamped}°C, ECw ${ecClamped.toFixed(1)} dS/m)`);
+    };
+  }
   $('#simCopy').onclick = async () => {
     const d = Engine.decideZoneA(simCond);
     const msg = `Irrigate Zone A (2 ha Date palms) for ${d.totalMinutes} mins after 21:00 (${fmt(d.smartLitres)} L${d.flushPct > 0 ? ` incl. +${d.flushPct}% salt flush` : ''}).`;
@@ -542,6 +673,7 @@ function renderAll() {
   if (!wx) return;
   syncLocationSelect();
   renderToday(); renderFarm(); renderFieldMap(); renderBlend(); renderSensor(); renderDrip(); renderPlanner(); renderShare(); renderAdviser();
+  if (simFromLive) renderHomeSim();
   bindInputs(); updateNet();
   $$('[data-goto]').forEach(a => a.onclick = e => { e.preventDefault(); showTab(a.dataset.goto); window.scrollTo({ top: 0, behavior: 'smooth' }); });
   if ($('#assistant')?.classList.contains('active') && typeof aiOnShow === 'function') aiOnShow();
@@ -835,6 +967,195 @@ async function init() {
   $('#hdrScenario').onchange = async e => { state.scenario = e.target.value; save(); await loadWeather(); renderAll(); };
   $('#refreshWx').onclick = async () => { await loadWeather(true); renderAll(); toast('Forecast updated'); };
   $('#jumpVoice').onclick = () => $('#voiceBox')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const applyFieldMode = (on, switchTab = false) => {
+    document.documentElement.dataset.fieldMode = on ? '1' : '0';
+    try { localStorage.setItem('saqi-field-mode', on ? '1' : '0'); } catch (e) { }
+    const cb = $('#fieldModeToggle'); if (cb) cb.checked = on;
+    const btn = $('#todayFieldBtn');
+    if (btn) {
+      btn.classList.toggle('is-active', on);
+      btn.textContent = on ? '✕ Exit Field Mode' : '☀️ Field Mode';
+    }
+    refreshReveals(false);
+    if (on && switchTab && !$('#today')?.classList.contains('active')) showTab('today');
+  };
+  const savedField = localStorage.getItem('saqi-field-mode') === '1';
+  applyFieldMode(savedField, false);
+  const fieldCb = $('#fieldModeToggle');
+  if (fieldCb) fieldCb.onchange = () => { applyFieldMode(fieldCb.checked, true); setMenu(false); toast(fieldCb.checked ? 'Sunlit Field Mode ON' : 'Field Mode OFF'); };
+  const fieldBtn = $('#todayFieldBtn');
+  if (fieldBtn) fieldBtn.onclick = () => {
+    const next = document.documentElement.dataset.fieldMode !== '1';
+    applyFieldMode(next, false);
+    toast(next ? 'Sunlit Field Mode ON (big contrast UI)' : 'Field Mode OFF');
+  };
+
+  const offCb = $('#simOfflineToggle');
+  if (offCb) {
+    offCb.checked = simOffline;
+    offCb.onchange = async () => {
+      simOffline = offCb.checked;
+      try { sessionStorage.setItem('saqi-sim-offline', simOffline ? '1' : '0'); } catch (e) { }
+      await loadWeather(!simOffline);
+      renderAll();
+      setMenu(false);
+      toast(simOffline ? 'Airplane-mode test ON · running 100% locally' : 'Airplane-mode test OFF · live weather restored');
+    };
+  }
+
+  const applyJudgeDemo = async () => {
+    setMenu(false);
+    applyFieldMode(false, false);
+    state = defaultState();
+    state.scenario = (navigator.onLine && !simOffline) ? 'live' : 'nov';
+    simFromLive = false;
+    voiceValveFilter = 'all';
+    save();
+    $('#hdrScenario').value = state.scenario;
+    expandWhyIdx = 0;
+    await loadWeather();
+    showTab('today');
+    renderAll();
+    expandWhyIdx = null;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    toast('Judge Demo ready: Al Ain 4-valve farm (Valve 1 math open)');
+  };
+  if ($('#judgeDemoBtn')) $('#judgeDemoBtn').onclick = applyJudgeDemo;
+  if ($('#todayJudgeBtn')) $('#todayJudgeBtn').onclick = applyJudgeDemo;
+
+  const ecBtn = $('#todayEcBtn'), ecWiz = $('#ecWizard'), ecInp = $('#ecWizInput');
+  const applyEcVal = val => {
+    const v = Math.min(25, Math.max(0, Number(val) || 0));
+    state.water.ec = +v.toFixed(1);
+    state.water.source = 'measured (EC pen)';
+    state.water.tested = isoDaysAgo(0);
+    save(); renderAll();
+    if (ecWiz) ecWiz.hidden = true;
+    toast(`Water ECw updated to ${v.toFixed(1)} dS/m — all valves recalculated`);
+  };
+  if (ecBtn && ecWiz) ecBtn.onclick = () => { ecWiz.hidden = !ecWiz.hidden; if (!ecWiz.hidden) { if (ecInp) ecInp.value = (+state.water.ec || 0).toFixed(1); ecInp?.focus(); } };
+  $$('[data-ec-preset]').forEach(b => b.onclick = () => applyEcVal(b.dataset.ecPreset));
+  if ($('#ecWizApply')) $('#ecWizApply').onclick = () => applyEcVal(ecInp?.value);
+
+  const loadScriptOnce = src => typeof aiLoadScript === 'function' ? aiLoadScript(src) : new Promise((res, rej) => {
+    if (window.jspdf?.jsPDF) { res(); return; }
+    const s = document.createElement('script'); s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s);
+  });
+  const pdfBtn = $('#todayOnePagerBtn');
+  if (pdfBtn) pdfBtn.onclick = async () => {
+    const oldTxt = pdfBtn.textContent;
+    pdfBtn.disabled = true; pdfBtn.textContent = 'Building PDF…';
+    try {
+      await loadScriptOnce(typeof AI_LIBS !== 'undefined' ? AI_LIBS.jspdf : 'vendor/jspdf.umd.min.js');
+      const JsPdf = window.jspdf?.jsPDF;
+      if (!JsPdf) throw new Error('jsPDF unavailable');
+      const doc = new JsPdf({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const locName = (LOCATIONS[state.location] || LOCATIONS.alain).name;
+      const asc = s => String(s || '').replace(/[^\x20-\x7E]/g, ' ');
+      doc.setFillColor(21, 76, 46);
+      doc.rect(0, 0, 210, 26, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(15);
+      doc.text('SAQI - Daily Salt-Smart Irrigation Brief', 14, 11.5);
+      doc.setFontSize(9.5);
+      doc.text(asc(`${locName} | Date: ${isoDaysAgo(0)} | Start: After ${state.startTime}`), 14, 18.5);
+      doc.text(asc(`ECw: ${fmt(state.water.ec, 1)} dS/m (${state.water.source}) | Drainage: ${state.drainage} | Mode: ${wx.kind}`), 14, 23.2);
+
+      doc.setTextColor(20, 30, 25);
+      let y = 35;
+      doc.setFontSize(11.5);
+      doc.text('1. Tonight Valve Schedule', 14, y);
+      y += 5;
+      doc.setFillColor(240, 245, 242);
+      doc.rect(14, y, 182, 7, 'F');
+      doc.setFontSize(8.5);
+      doc.text('Valve & Crop', 16, y + 4.8);
+      doc.text('Run Time', 78, y + 4.8);
+      doc.text('Volume', 105, y + 4.8);
+      doc.text('Salt Flush', 128, y + 4.8);
+      doc.text('Modeled ECe', 152, y + 4.8);
+      doc.text('Est. Yield', 177, y + 4.8);
+      y += 9;
+
+      results.forEach(r => {
+        const t = r.today, mins = t.invalidFlow ? 'Fix flow' : (round5(t.minutes) < 5 ? 'Skip (0)' : round5(t.minutes) + ' min');
+        const flush = pct(1 / (1 - t.LR) - 1);
+        doc.setFontSize(9);
+        doc.text(asc(`${r.bi + 1}. ${r.b.name} (${r.crop.name})`).slice(0, 34), 16, y);
+        doc.text(mins, 78, y);
+        doc.text(`${fmt(t.m3, 1)} m3`, 105, y);
+        doc.text('+' + flush, 128, y);
+        doc.text(`${fmt(t.modeledECe, 1)} dS/m`, 152, y);
+        doc.text(pct(r.eo.y), 177, y);
+        doc.setDrawColor(225, 232, 228);
+        doc.line(14, y + 2.5, 196, y + 2.5);
+        y += 7;
+      });
+
+      y += 5;
+      const tO = sum(results.map(r => r.weekOurs)), tW = sum(results.map(r => r.weekWeatherOnly)), tH = sum(results.map(r => r.weekHabit));
+      doc.setFontSize(11.5);
+      doc.text('2. 7-Day Comparison vs Guesswork', 14, y);
+      y += 6;
+      doc.setFontSize(9.5);
+      doc.text(`Saqi Planned: ${fmt(tO)} m3  |  Weather-Only (no salt flush): ${fmt(tW)} m3  |  Fixed Habit: ${fmt(tH)} m3`, 14, y);
+      y += 5.5;
+      const diff = tH - tO;
+      doc.text(diff >= 0 ? `Water saved vs habit: ${fmt(diff)} m3 (${pct(tH > 0 ? diff / tH : 0)})` : `Protective extra vs under-watering habit: +${fmt(Math.abs(diff))} m3`, 14, y);
+
+      y += 10;
+      doc.setFontSize(11.5);
+      doc.text('3. Worker Slip & Offline Scan QR', 14, y);
+      y += 5;
+      const workerMsg = voiceLines('en', voiceValveFilter).join('\n');
+      doc.setFontSize(9);
+      const split = doc.splitTextToSize(asc(workerMsg), 130);
+      doc.text(split, 14, y + 2);
+      if (typeof window.qrcode === 'function') {
+        if (window.qrcode.stringToBytesFuncs?.['UTF-8']) window.qrcode.stringToBytes = window.qrcode.stringToBytesFuncs['UTF-8'];
+        const qr = window.qrcode(0, 'M');
+        qr.addData(`SAQI ${isoDaysAgo(0)}\n` + voiceLines(state.lang, voiceValveFilter).join('\n'));
+        qr.make();
+        const cnt = qr.getModuleCount(), sz = 36 / cnt, qx = 156, qy = Math.min(y, 240);
+        doc.setFillColor(20, 20, 20);
+        for (let rr = 0; rr < cnt; rr++) {
+          for (let cc = 0; cc < cnt; cc++) {
+            if (qr.isDark(rr, cc)) doc.rect(qx + cc * sz, qy + rr * sz, sz, sz, 'F');
+          }
+        }
+        doc.setFontSize(7.5);
+        doc.text(`QR (${LANGS[state.lang].name})`, qx, qy + 40);
+      }
+
+      doc.setFontSize(7.5);
+      doc.setTextColor(100, 110, 105);
+      doc.text('Generated 100% locally in-browser (zero external AI calls). Weather: FAO-56 Penman-Monteith / Hargreaves backup.', 14, 286);
+      doc.save(`saqi-plan-${isoDaysAgo(0)}.pdf`);
+      toast('Offline 1-page plan PDF downloaded');
+    } catch (e) {
+      toast('Could not build PDF — opening browser print');
+      window.print();
+    } finally {
+      pdfBtn.disabled = false; pdfBtn.textContent = oldTxt;
+    }
+  };
+
+  let deferredInstallPrompt = null;
+  const installBtn = $('#installPwaBtn');
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    if (installBtn) installBtn.hidden = false;
+  });
+  if (installBtn) installBtn.onclick = async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    installBtn.hidden = true;
+  };
+
   $('#addBlock').onclick = () => {
     state.blocks.push({ name: 'New block', crop: 'date', area: 1, planted: isoDaysAgo(0), system: 'drip', flowMode: 'direct', emitterLph: 4, emitterCount: 5000, flow: 20, habitMin: 120 });
     state.flowLog.push(Array.from({ length: 14 }, (_, d) => ({ date: isoDaysAgo(13 - d), flow: 20 })));

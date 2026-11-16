@@ -106,6 +106,18 @@
               <span class="muted">Calm / battery-saver bg</span>
               <input type="checkbox" id="calmBgToggle">
             </label>
+            <label class="row" style="justify-content:space-between;margin-top:.2rem;font-size:.76rem;cursor:pointer">
+              <span class="muted">☀️ Field Mode (big sun UI)</span>
+              <input type="checkbox" id="fieldModeToggle">
+            </label>
+            <label class="row" style="justify-content:space-between;margin-top:.2rem;font-size:.76rem;cursor:pointer">
+              <span class="muted">✈️ Airplane-mode test</span>
+              <input type="checkbox" id="simOfflineToggle">
+            </label>
+            <div class="row" style="margin-top:.38rem;gap:.35rem">
+              <button type="button" class="btn sm" id="judgeDemoBtn" style="flex:1">⚖️ Judge Demo</button>
+              <button type="button" class="btn sm alt" id="installPwaBtn" hidden>📲 Install</button>
+            </div>
           </div>
         </div>
       </div>
@@ -335,7 +347,11 @@
     <div style="text-align:center">
       <p class="section-kicker">Interactive decision dashboard</p>
       <h2 class="section-title">What does your field need tonight?</h2>
-      <p class="muted" style="max-width:38rem;margin:.9rem auto 0;font-size:.98rem">Choose a desert scenario or fine-tune the conditions. The recommendation updates instantly.</p>
+      <p class="muted" style="max-width:40rem;margin:.9rem auto 0;font-size:.98rem">Choose a desert scenario or fine-tune the conditions. The recommendation updates instantly.</p>
+      <div class="row" style="justify-content:center;margin-top:.75rem;gap:.45rem">
+        <span class="pill" id="simEt0Badge">Scenario ET₀ (Hargreaves · 4.1 mm/d)</span>
+        <button type="button" class="btn sm ghost" id="seedHomeLiveBtn">🔄 Seed from today's live ET₀</button>
+      </div>
     </div>
 
     <div class="scenario-pills glass" role="group" aria-label="Desert scenarios" id="simScenarios">
@@ -430,14 +446,35 @@
 <section class="tab" id="today">
   <div class="today-head">
     <div>
-      <p class="section-kicker">Daily multi-valve schedule</p>
+      <p class="section-kicker">Daily multi-valve schedule · Saqi calculates the minimum salt flush &amp; speaks to your worker</p>
       <h2>Tonight's watering plan</h2>
       <p class="lead today-sub" id="wxSource">Loading weather…</p>
     </div>
     <div class="today-actions">
       <span class="today-night-pill" id="todayNightPill" hidden>🌙 <span id="todayNightTime"></span></span>
-      <button class="btn sm ghost" id="refreshWx">↻ Refresh</button>
-      <button class="btn sm" id="jumpVoice">🔊 Send SMS / Audio Plan</button>
+      <span class="pill warn" id="todayOfflineChip" hidden>✈️ Offline-ready</span>
+      <button type="button" class="btn sm ghost" id="todayEcBtn">⚡ EC Pen</button>
+      <button type="button" class="btn sm ghost" id="todayFieldBtn">☀️ Field Mode</button>
+      <button type="button" class="btn sm ghost" id="todayJudgeBtn">⚖️ Judge Demo</button>
+      <button type="button" class="btn sm ghost" id="refreshWx">↻ Refresh</button>
+      <button type="button" class="btn sm" id="jumpVoice">🔊 Send SMS / Audio Plan</button>
+    </div>
+  </div>
+
+  <div class="card ec-wizard-card" id="ecWizard" hidden>
+    <div class="row" style="justify-content:space-between;align-items:center;gap:.65rem;flex-wrap:wrap">
+      <div>
+        <b style="font-size:.9rem">⚡ 3-Tap EC Pen Check</b>
+        <span class="muted" style="font-size:.82rem;margin-inline-start:.35rem">Dip pocket EC pen in irrigation water and enter dS/m to update all valve runtimes:</span>
+      </div>
+      <div class="row" style="gap:.35rem;flex-wrap:wrap">
+        <button type="button" class="btn sm ghost" data-ec-preset="1.5">1.5 dS/m</button>
+        <button type="button" class="btn sm ghost" data-ec-preset="3.0">3.0 dS/m</button>
+        <button type="button" class="btn sm ghost" data-ec-preset="5.5">5.5 dS/m</button>
+        <button type="button" class="btn sm ghost" data-ec-preset="8.0">8.0 dS/m</button>
+        <input type="number" step="0.1" min="0" max="25" id="ecWizInput" value="3.0" style="width:84px" aria-label="Measured water ECw dS/m">
+        <button type="button" class="btn sm" id="ecWizApply">Update Plan</button>
+      </div>
     </div>
   </div>
 
@@ -454,12 +491,14 @@
   </details>
 
   <div class="card today-compare-card">
-    <div class="today-compare-head">
+    <div class="today-compare-head row" style="justify-content:space-between;align-items:flex-end">
       <div>
         <h3>7-day savings vs. guesswork</h3>
-        <p class="muted" style="margin:0;font-size:.86rem">Saqi vs. weather-only (no salt flush) and your fixed daily habit.</p>
+        <p class="muted" style="margin:0;font-size:.86rem">Saqi vs. weather-only (no salt flush) and fixed daily habit.</p>
       </div>
+      <button type="button" class="btn sm ghost" id="todayOnePagerBtn">📄 1-Page Plan PDF (Offline)</button>
     </div>
+    <div id="compareStory" class="compare-story"></div>
     <div class="kpi today-kpi" id="compareKpi"></div>
     <div id="compareChart" class="today-chart"></div>
     <details class="today-details-fold">
@@ -472,18 +511,23 @@
   <div class="card today-voice-card" id="voiceBox">
     <div class="today-voice-head">
       <div>
-        <h3 style="margin:0">🔊 Worker voice note &amp; SMS preview</h3>
-        <p class="muted" style="margin:.2rem 0 0;font-size:.84rem">Owner decides, worker acts. SMS/WhatsApp opens device preview (gateway required for auto-send).</p>
+        <h3 style="margin:0">🔊 Worker voice note, SMS &amp; QR handoff</h3>
+        <p class="muted" style="margin:.2rem 0 0;font-size:.84rem">Owner decides, worker acts. Pick a language + valve below (works offline via Web Speech &amp; QR; SMS is preview only).</p>
       </div>
-      <select id="voiceLang" style="max-width:210px"></select>
+      <div class="row" style="gap:.4rem">
+        <select id="voiceValve" style="max-width:190px" aria-label="Select valves for worker message"></select>
+        <select id="voiceLang" style="max-width:190px" aria-label="Select worker language"></select>
+      </div>
     </div>
     <div class="row" style="margin:.7rem 0 .6rem">
       <button class="btn sm" id="playAll">▶ Play all</button>
       <a class="btn sm alt" id="waLink" target="_blank" rel="noopener">WhatsApp Preview</a>
       <a class="btn sm ghost" id="smsLink">SMS Preview</a>
       <button class="btn sm ghost" id="copyVoice">Copy</button>
+      <button class="btn sm alt" id="qrBtn">📱 Worker QR Card</button>
     </div>
     <div id="voiceLines"></div>
+    <div id="workerQrBox" class="worker-qr-box" hidden></div>
   </div>
 </section>
 
@@ -857,14 +901,15 @@
 </footer>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="vendor/qrcode.js"></script>
 <script src="js/data.js"></script>
 <script src="js/engine.js"></script>
 <script src="js/tools.js"></script>
 <script src="js/app.js"></script>
 <script src="js/ai.js"></script>
 <script src="js/shader-bg.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/gsap.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.7/dist/ScrollTrigger.min.js"></script>
+<script src="vendor/gsap.min.js"></script>
+<script src="vendor/ScrollTrigger.min.js"></script>
 <script src="js/hero-cinema.js"></script>
 <script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>
 </body>

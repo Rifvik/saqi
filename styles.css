@@ -1047,4 +1047,68 @@ html[data-calm-bg="1"] .reveal{opacity:1 !important;transform:none !important;tr
   html.printing-report body{background:#fff !important;color:#111 !important}
   html.printing-report main,html.printing-report section.tab,html.printing-report #aiReportCard,html.printing-report .ai-report-wrap{margin:0 !important;padding:0 !important;border:0 !important;box-shadow:none !important;background:#fff !important;backdrop-filter:none !important}
   html.printing-report .ai-report{min-width:0;padding:8mm}
+
+  html.printing-qr .shader-bg,
+  html.printing-qr .scroll-progress,
+  html.printing-qr .site-header,
+  html.printing-qr .site-footer,
+  html.printing-qr .ai-fab,
+  html.printing-qr .toast,
+  html.printing-qr section.tab:not(#today),
+  html.printing-qr #today > *:not(#voiceBox),
+  html.printing-qr #voiceBox > *:not(#workerQrBox){display:none !important}
+  html.printing-qr body{background:#fff !important;color:#111 !important}
+  html.printing-qr #workerQrBox{border:1px solid #cbd5e1 !important;box-shadow:none !important}
 }
+
+/* ---------- P0/P1 additions: EC wizard, comparison story, salt dots, Worker QR & Field Mode ---------- */
+.ec-wizard-card{border-color:color-mix(in srgb,var(--primary) 34%,var(--border));background:color-mix(in srgb,var(--primary) 6%,var(--card));margin-bottom:.9rem;padding:.85rem 1.05rem}
+.compare-story{margin:.75rem 0 .25rem;padding:.75rem 1rem;border-radius:14px;border:1px solid color-mix(in srgb,var(--primary) 26%,var(--line));background:color-mix(in srgb,var(--primary) 8%,var(--kpi-bg));display:flex;flex-wrap:wrap;gap:.55rem 1rem;align-items:center;justify-content:space-between;font-size:.9rem;line-height:1.45}
+.compare-story strong{color:var(--primary)}
+.compare-story-pills{display:flex;flex-wrap:wrap;gap:.35rem}
+.salt-dot-strip{display:inline-flex;align-items:center;gap:4px;vertical-align:middle;margin-inline-start:.4rem}
+.salt-dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--good);border:1px solid rgba(0,0,0,0.12)}
+.salt-dot.warn{background:var(--warn)}
+.salt-dot.bad{background:var(--destructive)}
+.worker-qr-box{margin-top:.85rem;padding:1rem;border-radius:16px;border:1px solid var(--line);background:var(--kpi-bg);display:flex;flex-wrap:wrap;gap:1rem;align-items:center}
+.worker-qr-svg{background:#ffffff;color:#111111;padding:10px;border-radius:14px;border:1px solid rgba(15,23,42,0.12);line-height:0;flex:0 0 auto;box-shadow:0 6px 18px rgba(15,23,42,0.08)}
+.worker-qr-svg svg{width:154px;height:154px;display:block}
+.worker-qr-meta{flex:1 1 240px;min-width:0}
+.worker-qr-meta h4{margin:0 0 .3rem;font-size:.98rem}
+.worker-qr-meta pre{margin:.45rem 0 .65rem;padding:.6rem .75rem;border-radius:10px;background:var(--control-bg);border:1px solid var(--line);font-family:var(--mono);font-size:.76rem;white-space:pre-wrap;word-break:break-word;max-height:145px;overflow:auto}
+#todayFieldBtn.is-active{background:var(--primary);color:var(--primary-foreground);border-color:var(--primary)}
+
+/* High-contrast sunlit Field Mode */
+html[data-field-mode="1"]{
+  color-scheme:light;
+  --background:#ffffff;
+  --foreground:#09110d;
+  --card:#ffffff;
+  --kpi-bg:#f8fafc;
+  --card-solid:#ffffff;
+  --card-foreground:#09110d;
+  --muted-foreground:#273830;
+  --border:#94a3b8;
+  --line:#cbd5e1;
+  --primary:#0b532f;
+  --primary-foreground:#ffffff;
+  --control-bg:#f1f5f9;
+  --control-bg-hover:#e2e8f0;
+  --shadow-soft:none;
+  --shadow-lift:none;
+}
+html[data-field-mode="1"] body{background:#ffffff;color:#09110d}
+html[data-field-mode="1"] .shader-bg,
+html[data-field-mode="1"] .site-footer,
+html[data-field-mode="1"] #aiFab,
+html[data-field-mode="1"] #today .today-conf-details,
+html[data-field-mode="1"] #today .today-details-fold{display:none !important}
+html[data-field-mode="1"] .main-links .nav-dd,
+html[data-field-mode="1"] .main-links [data-tab]:not([data-tab="today"]):not([data-tab="home"]){display:none}
+html[data-field-mode="1"] .card{background:#ffffff !important;border:2px solid #0f172a !important;backdrop-filter:none !important}
+html[data-field-mode="1"] #today .decision .big{font-size:clamp(2.15rem,5vw,2.9rem);letter-spacing:-0.02em}
+html[data-field-mode="1"] #today .btn,
+html[data-field-mode="1"] #today select,
+html[data-field-mode="1"] #today input{min-height:46px;font-size:1rem;font-weight:700}
+html[data-field-mode="1"] #today .today-why-fold{border:1px solid #94a3b8;border-radius:10px;padding:.35rem .6rem}
+

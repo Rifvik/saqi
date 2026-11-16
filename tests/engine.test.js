@@ -86,3 +86,14 @@ test('geodesic polygonStats computes accurate hectares and sub-plot grid', () =>
   assert(Math.abs(st.areaHa - 2.0) < 0.05);
   assert(st.cells >= 30 && st.lines.length > 0);
 });
+
+test('vendored offline UTF-8 QR code generator encodes worker Arabic/Urdu notes locally', () => {
+  const qrcode = require(path.join(root, 'vendor/qrcode.js'));
+  qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+  const qr = qrcode(0, 'M');
+  qr.addData('والو 1: 160 منٹ چلائیں، 21:00 بجے کے بعد شروع کریں۔');
+  qr.make();
+  assert(qr.getModuleCount() >= 21);
+  const svg = qr.createSvgTag({ cellSize: 4, margin: 2 });
+  assert(svg.includes('<svg') && svg.includes('<path'));
+});

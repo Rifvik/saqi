@@ -7,8 +7,8 @@ const AI_API = 'api/ai';
 const AI_CHAT_KEY = 'saqi-ai-chat-v1';
 const AI_REPORT_KEY = 'saqi-ai-report-v1';
 const AI_LIBS = {
-  html2canvas: 'https://cdn.jsdelivr.net/npm/html2canvas-pro@1.5.8/dist/html2canvas-pro.min.js',
-  jspdf: 'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
+  html2canvas: 'vendor/html2canvas-pro.min.js',
+  jspdf: 'vendor/jspdf.umd.min.js',
 };
 const AI_SUGGESTIONS = [
   'How long should I water each valve tonight, and why?',

@@ -16,7 +16,11 @@ Most irrigation tools focus only on evaporation. In Gulf desert farms, **two hid
 
 ## 2. Quick Start (Run Locally in 10 Seconds)
 
-With **Python 3.10+** (includes all farm tools **plus** the Gemini-powered **Saqi AI Chatbot & Report Generator**):
+**One-command launcher** (runs JS + Python test suites, then starts Saqi on `http://127.0.0.1:8765/index.html`):
+- Windows: double-click or run `.\start-saqi.bat`
+- macOS / Linux: `chmod +x start-saqi.sh && ./start-saqi.sh`
+
+Or manually with **Python 3.10+** (includes all farm tools **plus** the Gemini-powered **Saqi AI Chatbot & Report Generator**):
 
 ```bash
 git clone https://github.com/Rifvik/saqi.git
@@ -45,7 +49,9 @@ Open **`http://127.0.0.1:8765/index.html`** in your browser.
 | [`ai_service.py`](ai_service.py) | Shared Gemini AI service (`google-genai`) | Single shared service powering both `/api/ai/chat` and `/api/ai/report` using `gemini-3.8-flash` (with automatic Flash fallback on transient capacity spikes), server-side `GEMINI_API_KEY`, 44-language support, and fabricated-number grounding validation |
 | [`server.py`](server.py) | Local web server + `/api/ai/*` proxy | Serves static files, loads optional git-ignored `.env`, exposes `/api/ai/status`, `/api/ai/chat`, `/api/ai/report`, blocks `.env`/`.py`/`tests/` downloads, rate-limits requests |
 | [`js/shader-bg.js`](js/shader-bg.js) | Theme-adaptive WebGL background | 16-layer warped plasma wave shader syncing smoothly between Light Alabaster and Dark Obsidian themes |
-| [`sw.js`](sw.js) | Service Worker cache | Caches core app shell files (`saqi-v16`) while bypassing `/api/*` for live AI calls |
+| [`vendor/`](vendor/) | Vendored zero-CDN offline libraries | Local copies of GSAP, ScrollTrigger, `html2canvas-pro`, `jsPDF`, and UTF-8 `qrcode.js` so offline field use never depends on third-party CDNs |
+| [`sw.js`](sw.js) | Service Worker cache | Caches core app shell + vendored `vendor/*` files (`saqi-v23`) while bypassing `/api/*` for live AI calls |
+| [`start-saqi.bat`](start-saqi.bat) & [`start-saqi.sh`](start-saqi.sh) | One-command launch & verify | Runs JS engine & Python unit tests, then launches the local Saqi server on port `8765` |
 | [`tests/engine.test.js`](tests/engine.test.js) | Automated JS unit tests | Zero-dependency `node:test` suite verifying FAO-29/56 equations, drainage caps, zero-flow guards, blending, and GIS geometry |
 | [`tests/test_ai.py`](tests/test_ai.py) | Automated Python AI & server tests | `unittest` suite testing `SaqiAIService`, Gemini error sanitization, number validation, multilingual/RTL output, and `server.py` security |
 | [`manifest.json`](manifest.json) & [`icon.svg`](icon.svg) | PWA metadata & vector icon | App name, theme colors, droplet emblem |
@@ -57,20 +63,20 @@ Open **`http://127.0.0.1:8765/index.html`** in your browser.
 ### 🏠 Homepage (`#home`)
 - **Hero & Live Water Preview:** Tracks **Zone A** (2 ha drip-irrigated date palms, $40\text{ m}^3/\text{h}$ block flow, 240-min summer habit $= 160{,}000\text{ L}$) using the **exact same FAO-56 + FAO-29 engine (`Engine.decideZoneA()` → `blockDecision()` + `weatherOnlyDecision()`)** as Tonight's Plan.
 - **3-Card Overview (`#problem`, `#engine`, `#results`):** Summarizes heat + salinity risk, the 3-step *Sense → Decide → Act* loop, and adapts honestly between **water saved** (typical/mild weather) and **crop protection water added** (when fixed habits under-water during heatwaves).
-- **Interactive Field Simulator (`#demo`):** Switch between **Normal Day**, **48°C Heatwave**, and **High Water Salinity (6.5 dS/m)** or drag the 4 sliders (**Air temperature**, **Water salinity $EC_w$**, **Soil moisture**, **Humidity**) to compare **Habit vs. Weather-Only vs. Saqi** side-by-side.
+- **Interactive Field Simulator (`#demo`):** Switch between **Normal Day**, **48°C Heatwave**, and **High Water Salinity (6.5 dS/m)** or drag the 4 sliders (**Air temperature**, **Water salinity $EC_w$**, **Soil moisture**, **Humidity**) to compare **Habit vs. Weather-Only vs. Saqi** side-by-side, with an explicit **`Scenario ET₀ (Hargreaves)` badge** and one-click **`🔄 Seed from today's live ET₀`**.
 
 ### 💧 1. Today's Plan (`#today` — `renderToday()` in `js/app.js`)
+- **Judge Demo, Sunlit Field Mode & Airplane-Mode Proof:** One-tap **`⚖️ Judge Demo`** resets the canonical Al Ain 4-valve showcase and opens Valve 1's *Why this runtime?* calculation; **`☀️ Field Mode`** switches to a high-contrast sunlit UI with `≥ 46px` touch controls; **`✈️ Airplane-mode test`** in Tools (plus **`#todayOfflineChip`**) proves zero-network cached forecast + Hargreaves $\text{ET}_0$ resilience live.
+- **3-Tap EC Pen Check (`⚡ EC Pen`):** Quick preset chips (`1.5`, `3.0`, `5.5`, `8.0 dS/m`) or custom pocket-pen reading update `state.water.ec` and recalculate every valve immediately.
 - **Data Confidence & Provenance Strip (`#dataConfidence`):** Shows the source, freshness, and uncertainty of every input:
   - *Weather:* Live Open-Meteo forecast timestamp vs. cached forecast vs. Hargreaves fallback.
   - *Water $EC_w$:* Source (EC pen, lab test, or estimated) and age in days (flags stale measurements $> 30$ days).
   - *Soil $EC_e$:* Modeled FAO-29 steady-state estimate + active subsurface drainage class.
   - *Flow:* Flags active emitter clog or pipe burst anomalies.
 - **7-Day Forecast & Heatwave Pre-Watering:** Highlights days $\ge$ `heatThreshold` (default $45\,^\circ\text{C}$), recommends night irrigation (`21:00–05:00`), and triggers a **`+10% pre-heatwave buffer`** the evening before a heatwave begins.
-- **Per-Valve Decision Cards:** Displays recommended minutes (rounded to 5-min steps), volume ($\text{m}^3$), gross depth ($\text{mm}$), block flow ($\text{m}^3/\text{h}$), and a transparent **`Why:`** calculation breakdown.
-- **Three-Way 7-Day Comparison:** Compares **Saqi** against both:
-  1. **Weather-only ($\text{ET}_0 \times K_c / E_a$, no salt flush)** — proves the crop-value protection added specifically by salinity management; and
-  2. **Fixed daily habit** — shows water and cost savings over guesswork.
-- **Voice Note & SMS/WhatsApp Preview (`#voiceBox`):** Generates concise valve instructions in **English, Arabic, Urdu, Hindi, or Bengali**, plays them aloud via the browser's Web Speech API (`speechSynthesis`), copies text, or opens an **SMS / WhatsApp Preview** composer *(note: actual automated SMS delivery requires a server-side SMS gateway and sender connectivity)*.
+- **Per-Valve Decision Cards:** Displays recommended minutes (rounded to 5-min steps), volume ($\text{m}^3$), gross depth ($\text{mm}$), block flow ($\text{m}^3/\text{h}$), and a progressive-disclosure **`Why this runtime?`** breakdown.
+- **Three-Way 7-Day Comparison + Offline 1-Page PDF:** Features the **"Beat the guess" story card (`#compareStory`)**, 7-day **salt risk dot strip** per valve, and compares **Saqi** against both **Weather-only ($\text{ET}_0 \times K_c / E_a$, no salt flush)** and **Fixed daily habit** — plus a zero-AI **`📄 1-Page Plan PDF (Offline)`** generator powered by local vendored `jsPDF` + QR vector rendering.
+- **Voice Note, Valve Filter, SMS/WhatsApp & Offline Worker QR (`#voiceBox`):** Generates concise valve instructions for **All valves** or an **individual valve (`#voiceValve`)** in **English, Arabic, Urdu, Hindi, or Bengali**, plays them aloud via `speechSynthesis`, generates a **0-network UTF-8 QR code card (`📱 Worker QR Card`)** with print slip support, or opens an **SMS / WhatsApp Preview** composer *(note: actual automated SMS delivery requires a server-side SMS gateway and sender connectivity)*.
 
 ### 🌴 2. My Farm — Field Map, Grid Area & Public Feeds (`#farm` — `js/tools.js` & `js/app.js`)
 - **Interactive GIS Map & Grid Area Calculator (`renderFieldMap()`):**
