@@ -396,6 +396,94 @@ function renderAll() {
   bindInputs(); updateNet();
   $$('[data-goto]').forEach(a => a.onclick = e => { e.preventDefault(); showTab(a.dataset.goto); window.scrollTo({ top: 0, behavior: 'smooth' }); });
 }
+const SITE_LANGS = [
+  ['en', 'English'], ['ar', 'العربية · Arabic'], ['ur', 'اردو · Urdu'], ['hi', 'हिन्दी · Hindi'],
+  ['bn', 'বাংলা · Bengali'], ['ml', 'മലയാളം · Malayalam'], ['ta', 'தமிழ் · Tamil'], ['tl', 'Tagalog · Filipino'],
+  ['fa', 'فارسی · Persian'], ['ps', 'پښتو · Pashto'], ['pa', 'ਪੰਜਾਬੀ · Punjabi'], ['te', 'తెలుగు · Telugu'],
+  ['mr', 'मराठी · Marathi'], ['gu', 'ગુજરાતી · Gujarati'], ['si', 'සිංහල · Sinhala'], ['ne', 'नेपाली · Nepali'],
+  ['am', 'አማርኛ · Amharic'], ['sw', 'Kiswahili · Swahili'], ['so', 'Soomaali · Somali'], ['ha', 'Hausa'],
+  ['tr', 'Türkçe · Turkish'], ['fr', 'Français · French'], ['es', 'Español · Spanish'], ['de', 'Deutsch · German'],
+  ['pt', 'Português · Portuguese'], ['ru', 'Русский · Russian'], ['zh-CN', '中文 · Chinese (Simp)'], ['zh-TW', '繁體中文 · Chinese (Trad)'],
+  ['id', 'Bahasa Indonesia'], ['ms', 'Bahasa Melayu'], ['vi', 'Tiếng Việt · Vietnamese'], ['th', 'ไทย · Thai'],
+  ['ja', '日本語 · Japanese'], ['ko', '한국어 · Korean'], ['it', 'Italiano · Italian'], ['nl', 'Nederlands · Dutch'],
+  ['pl', 'Polski · Polish'], ['uk', 'Українська · Ukrainian'], ['ro', 'Română · Romanian'], ['el', 'Ελληνικά · Greek'],
+  ['uz', 'Oʻzbek · Uzbek'], ['kk', 'Қазақ · Kazakh'], ['az', 'Azərbaycan'], ['he', 'עברית · Hebrew'],
+];
+const RTL_CODES = new Set(['ar', 'ur', 'fa', 'ps', 'he']);
+let curSiteLang = localStorage.getItem('saqi-site-lang') || 'en';
+
+window.googleTranslateElementInit = function () {
+  if (window.google?.translate?.TranslateElement) {
+    new google.translate.TranslateElement({ pageLanguage: 'en', autoDisplay: false }, 'google_translate_element');
+    if (curSiteLang && curSiteLang !== 'en') setTimeout(() => triggerGoogleCombo(curSiteLang), 600);
+  }
+};
+
+function triggerGoogleCombo(code) {
+  const combo = $('.goog-te-combo');
+  if (combo) {
+    combo.value = code;
+    combo.dispatchEvent(new Event('change'));
+    return true;
+  }
+  return false;
+}
+
+function setSiteLanguage(code) {
+  curSiteLang = code;
+  try { localStorage.setItem('saqi-site-lang', code); } catch (e) { }
+  document.documentElement.dir = RTL_CODES.has(code) ? 'rtl' : 'ltr';
+  document.documentElement.lang = code;
+  const entry = SITE_LANGS.find(x => x[0] === code);
+  const shortLabel = code === 'en' ? 'Translate' : (entry ? entry[1].split('·')[0].trim() : code.toUpperCase());
+  const lbl = $('#langBtnLabel'); if (lbl) lbl.textContent = shortLabel;
+
+  if (LANGS[code]) { state.lang = code; save(); if (wx) renderVoice(); }
+
+  document.cookie = `googtrans=/en/${code};path=/`;
+  document.cookie = `googtrans=/en/${code};path=/;domain=${location.hostname}`;
+
+  if (code === 'en') {
+    document.cookie = 'googtrans=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/';
+    if (!triggerGoogleCombo('en')) location.reload();
+    else toast('Website language set to English');
+    return;
+  }
+  if (!triggerGoogleCombo(code)) {
+    let tries = 0;
+    const iv = setInterval(() => {
+      if (triggerGoogleCombo(code) || ++tries > 15) clearInterval(iv);
+    }, 300);
+  }
+  toast(`Translating website to ${entry ? entry[1] : code}…`);
+}
+
+function initTranslatorUI() {
+  const langBtn = $('#langBtn'), langMenu = $('#langMenu'), langSearch = $('#langSearch'), langList = $('#langList');
+  if (!langBtn || !langMenu) return;
+  const setOpen = open => { langMenu.hidden = !open; langBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); if (open) langSearch.focus(); };
+  const renderList = (q = '') => {
+    const f = q.trim().toLowerCase();
+    const items = SITE_LANGS.filter(([c, n]) => !f || n.toLowerCase().includes(f) || c.toLowerCase().includes(f));
+    langList.innerHTML = items.map(([c, n]) => `<button type="button" data-slang="${c}" class="${c === curSiteLang ? 'active' : ''}"><span>${esc(n)}</span><small>${esc(c)}</small></button>`).join('') ||
+      `<div class="muted" style="grid-column:1/-1;padding:.4rem">No matching language</div>`;
+    $$('#langList [data-slang]').forEach(b => b.onclick = () => {
+      setOpen(false);
+      setSiteLanguage(b.dataset.slang);
+      renderList(langSearch.value);
+    });
+  };
+  renderList();
+  if (curSiteLang !== 'en') {
+    const entry = SITE_LANGS.find(x => x[0] === curSiteLang);
+    $('#langBtnLabel').textContent = entry ? entry[1].split('·')[0].trim() : curSiteLang.toUpperCase();
+    document.documentElement.dir = RTL_CODES.has(curSiteLang) ? 'rtl' : 'ltr';
+  }
+  langBtn.onclick = e => { e.stopPropagation(); setOpen(langMenu.hidden); };
+  langSearch.oninput = () => renderList(langSearch.value);
+  document.addEventListener('mousedown', e => { if (!$('#langWrap').contains(e.target)) setOpen(false); });
+}
+
 const THEME_KEY = 'saqi-theme-v2';
 function applyTheme(t) {
   const mode = t === 'dark' ? 'dark' : 'light';
@@ -412,6 +500,7 @@ function applyTheme(t) {
 }
 async function init() {
   applyTheme(localStorage.getItem(THEME_KEY) || 'light');
+  initTranslatorUI();
   $('#themeToggle').onclick = () => {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     try { localStorage.setItem(THEME_KEY, next); } catch (e) { }
