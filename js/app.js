@@ -455,6 +455,7 @@ function showTab(id, instant = false) {
   $$('.main-links [data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
   if (!instant && activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   if (id === 'farm' && typeof lmap !== 'undefined' && lmap) setTimeout(() => lmap.invalidateSize(), 80);
+  if (typeof refreshReveals === 'function') refreshReveals(prevSec !== nextSec && !instant);
   history.replaceState(null, '', '#' + id);
 }
 function syncLocationSelect() {
@@ -473,6 +474,7 @@ function renderAll() {
   renderToday(); renderFarm(); renderFieldMap(); renderBlend(); renderSensor(); renderDrip(); renderPlanner(); renderShare(); renderAdviser();
   bindInputs(); updateNet();
   $$('[data-goto]').forEach(a => a.onclick = e => { e.preventDefault(); showTab(a.dataset.goto); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  if (typeof refreshReveals === 'function') refreshReveals(false);
 }
 const SITE_LANGS = [
   ['en', 'English'], ['ar', 'العربية · Arabic'], ['ur', 'اردو · Urdu'], ['hi', 'हिन्दी · Hindi'],
@@ -576,8 +578,70 @@ function applyTheme(t) {
     btn.title = mode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode';
   }
 }
+let revealObserver = null;
+function updateScrollMotion() {
+  const doc = document.documentElement;
+  const maxScroll = doc.scrollHeight - window.innerHeight;
+  const pct = maxScroll > 0 ? Math.min(100, Math.max(0, (window.scrollY / maxScroll) * 100)) : 0;
+  const bar = $('#scrollProgress');
+  if (bar) bar.style.width = pct.toFixed(2) + '%';
+
+  $$('section.tab.active .reveal:not(.in-view)').forEach(el => {
+    const r = el.getBoundingClientRect();
+    if (r.top <= window.innerHeight * 0.98) {
+      el.classList.add('in-view');
+      revealObserver?.unobserve(el);
+    }
+  });
+}
+
+function refreshReveals(resetTab = false) {
+  const targets = $$('section.tab.active :is(.card, .preview-card, .day, .kpi > div, .sim-compare, .pillar)');
+  if (!targets.length) { updateScrollMotion(); return; }
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const vh = window.innerHeight || 900;
+
+  targets.forEach((el, idx) => {
+    el.style.setProperty('--stagger', String(idx % 8));
+    if (resetTab) el.classList.remove('in-view');
+    el.classList.add('reveal');
+
+    if (reduced || !revealObserver) {
+      el.classList.add('in-view');
+      return;
+    }
+
+    const r = el.getBoundingClientRect();
+    if (r.top < vh * 0.96) {
+      if (!el.classList.contains('in-view')) {
+        requestAnimationFrame(() => el.classList.add('in-view'));
+      }
+      revealObserver.unobserve(el);
+    } else if (!el.classList.contains('in-view')) {
+      revealObserver.observe(el);
+    }
+  });
+  updateScrollMotion();
+}
+
+function initScrollMotion() {
+  if ('IntersectionObserver' in window && !revealObserver) {
+    revealObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        entry.target.classList.add('in-view');
+        revealObserver.unobserve(entry.target);
+      });
+    }, { threshold: 0.04, rootMargin: '0px 0px -20px 0px' });
+  }
+  window.addEventListener('scroll', updateScrollMotion, { passive: true });
+  window.addEventListener('resize', updateScrollMotion, { passive: true });
+  updateScrollMotion();
+}
+
 async function init() {
   applyTheme(localStorage.getItem(THEME_KEY) || 'light');
+  initScrollMotion();
   initTranslatorUI();
   $('#themeToggle').onclick = () => {
     const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
