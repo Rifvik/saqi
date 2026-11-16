@@ -449,25 +449,70 @@
 
 <!-- ABOUT -->
 <section class="tab" id="about">
-  <h2>Why Saqi — the one-minute pitch</h2>
-  <div class="card">
-    <p><b>The problem inside the problem: salt.</b> Everyone talks about desert farms using too much water. Hardly anyone asks <em>why</em>. A big hidden reason is salt. Groundwater in the Gulf is brackish, so growers pour on extra water to wash salt away from the roots, by guesswork. They either waste water or let salt quietly cut the harvest. Cheap moisture sensors are fooled by the same salt, and drippers get blocked by it.</p>
-    <p><b>The second hidden problem: the person who decides isn't the person who waters.</b> On many Gulf farms the owner lives in the city and a worker opens the valves, often reading neither Arabic nor English. A perfect recommendation in an English app never reaches the valve.</p>
-    <p><b>Saqi</b> turns weather, crop stage and water salinity into one number per valve, "Valve 2: 165 minutes after 21:00", and sends it as a voice note in the worker's language. It uses <b>exactly enough water for the crop plus exactly enough to flush salt</b>, and no more.</p>
-    <p><b>Who:</b> small and mid-size farms (0.5–20 ha) in the UAE, Oman and Saudi Arabia. <b>Cost:</b> free on a phone they already own. Optional extras: a 40 AED EC pen, a 15 AED moisture sensor, a flow meter.</p>
+  <div class="card pitch-hero">
+    <span class="hero-badge"><span class="dot"></span>Why Saqi — The 1-Minute Pitch</span>
+    <h2 class="pitch-headline">
+      Desert farms don’t just overwater by habit — they overwater to <span class="primary-txt">flush salt by guesswork.</span>
+    </h2>
+    <p class="pitch-sub">
+      Saqi calculates the <b>exact water the crop needs</b> plus the <b>minimum extra water to flush salt</b>, and delivers one clear voice instruction in the farm worker’s language.
+    </p>
+    <div class="pitch-formula">
+      <div class="pf-chip"><b>Crop Need</b><span>Weather ET₀ × FAO-56 Kc</span></div>
+      <span class="pf-op">+</span>
+      <div class="pf-chip"><b>Exact Salt Flush</b><span>Water EC vs FAO-29 limit</span></div>
+      <span class="pf-op">→</span>
+      <div class="pf-chip pf-result"><b>"Valve 2 · 165 min after 21:00"</b><span>Voice + SMS in Urdu · Hindi · Arabic · Bengali</span></div>
+    </div>
   </div>
+
+  <div class="pillars-grid" style="margin-bottom:1.1rem">
+    <article class="card pillar">
+      <div class="row" style="justify-content:space-between">
+        <span class="icon-box amber"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></span>
+        <span class="tag amber">HIDDEN PROBLEM #1</span>
+      </div>
+      <h3>The Salt Trap</h3>
+      <p class="muted" style="margin:0">Gulf groundwater is brackish. Farmers guess how much extra water to pour on—either <b>wasting scarce water</b> or letting salt quietly <b>cut yields, fool cheap sensors, and clog drippers</b>.</p>
+    </article>
+
+    <article class="card pillar">
+      <div class="row" style="justify-content:space-between">
+        <span class="icon-box sage"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg></span>
+        <span class="tag green">HIDDEN PROBLEM #2</span>
+      </div>
+      <h3>Owner ≠ Worker</h3>
+      <p class="muted" style="margin:0">The owner often lives in the city while a field worker opens the valves—and may not read Arabic or English. Saqi sends <b>one spoken voice note &amp; SMS</b> straight to the worker.</p>
+    </article>
+
+    <article class="card pillar primary-card">
+      <div class="row" style="justify-content:space-between">
+        <span class="icon-box inv"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg></span>
+        <span class="live-pill">BUILT FOR THE DESERT</span>
+      </div>
+      <h3>Zero-Hardware Start</h3>
+      <p class="inv-muted" style="margin:0">Built for <b>0.5–20 ha farms</b> across the UAE, Oman &amp; Saudi Arabia. Works offline on any phone for <b>0 AED</b>.</p>
+      <div class="pillar-stats inv-border">
+        <div><div class="stat-num">0 AED</div><div class="inv-muted" style="font-size:.74rem">Phone-only start</div></div>
+        <div><div class="stat-num">~55 AED</div><div class="inv-muted" style="font-size:.74rem">Optional EC pen + sensor</div></div>
+      </div>
+    </article>
+  </div>
+
   <div class="grid g2">
     <div class="card">
-      <h3>Desert rules</h3>
-      <ul>
-        <li><b>Water:</b> daily amount = crop need (FAO-56) + minimum salt flush (FAO-29), instead of a fixed habit. Night timing, clog and leak alerts, blending and well-sharing all save more.</li>
-        <li><b>Weak connectivity:</b> the app installs to the phone and works offline. A forecast is ≈ 2 KB, cached for days, and if there's no forecast it falls back to climate normals plus the Hargreaves formula. Instructions go out by SMS/WhatsApp text.</li>
-        <li><b>Little time:</b> one number per valve, one voice note.</li>
-        <li><b>Affordable:</b> no subscription, no hardware required, total app size ≈ 100 KB.</li>
-      </ul>
+      <p class="section-kicker" style="margin-bottom:.3rem">Constraint Check</p>
+      <h3>Desert Rules</h3>
+      <div class="engine-steps" style="margin-top:.9rem">
+        <div class="step"><span class="step-num">💧</span><div><b>Saves water:</b> Exact FAO-56 crop need + FAO-29 salt flush, night scheduling, leak/clog alerts &amp; water sharing.</div></div>
+        <div class="step"><span class="step-num">📡</span><div><b>Offline-first:</b> ~2 KB forecast cached on device; Hargreaves climate backup works with zero internet.</div></div>
+        <div class="step"><span class="step-num">⚡</span><div><b>Zero friction:</b> One runtime per valve + one tap to play or send via WhatsApp/SMS.</div></div>
+        <div class="step"><span class="step-num">🪙</span><div><b>Affordable:</b> Free web app (&lt; 100 KB), no subscription, no mandatory sensors.</div></div>
+      </div>
     </div>
     <div class="card">
-      <h3>Data and methods (what is real)</h3>
+      <p class="section-kicker" style="margin-bottom:.3rem">Transparency</p>
+      <h3>Data &amp; Methods (What Is Real)</h3>
       <table>
         <tr><td>Weather + ET₀</td><td><span class="tag green">real</span> Open-Meteo live forecast (FAO-56 Penman-Monteith)</td></tr>
         <tr><td>Crop water use</td><td><span class="tag green">real</span> FAO-56 Kc curves</td></tr>

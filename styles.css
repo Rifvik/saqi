@@ -541,6 +541,22 @@ a{color:var(--primary)}
 .pill.warn{background:var(--accent);color:var(--accent-fg)}
 .pill.bad{background:oklch(0.55 0.19 28 / 0.16);color:var(--destructive)}
 
+/* Why Saqi Pitch Hero */
+.pitch-hero{padding:clamp(1.4rem,3.2vw,2.4rem) !important;border:2px solid oklch(0.39 0.085 155 / 0.2) !important;box-shadow:var(--shadow-lift) !important}
+.pitch-headline{margin:1.1rem 0 0;font-size:clamp(1.65rem,3.5vw,2.55rem);line-height:1.12;letter-spacing:-0.04em;max-width:48rem}
+.pitch-sub{margin:.95rem 0 0;font-size:clamp(1rem,1.6vw,1.15rem);line-height:1.58;color:var(--muted-foreground);max-width:46rem}
+.pitch-sub b{color:var(--foreground)}
+.pitch-formula{margin-top:1.5rem;display:flex;flex-wrap:wrap;align-items:center;gap:.6rem}
+.pf-chip{
+  background:var(--muted);border:1px solid var(--line);border-radius:1rem;padding:.68rem 1rem;
+  display:flex;flex-direction:column;gap:.12rem;
+}
+.pf-chip b{font-size:.92rem;color:var(--foreground)}
+.pf-chip span{font-family:var(--mono);font-size:.74rem;color:var(--muted-foreground)}
+.pf-result{background:var(--secondary);border-color:oklch(0.39 0.085 155 / 0.25)}
+.pf-result b{color:var(--primary)}
+.pf-op{font-family:var(--mono);font-size:1.25rem;font-weight:800;color:var(--primary);padding:0 .15rem}
+
 /* Footer */
 .site-footer{border-top:1px solid var(--line);background:var(--card);margin-top:2rem}
 .footer-inner{
