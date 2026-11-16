@@ -372,7 +372,9 @@ function showTab(id, instant = false) {
 
   nextSec.style.setProperty('--dir', dir);
   nextSec.classList.add('active');
-  $$('#toolsMenu [data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  const activeBtn = $$('.main-links [data-tab]').find(b => b.dataset.tab === id);
+  $$('.main-links [data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  if (!instant && activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   history.replaceState(null, '', '#' + id);
 }
 function renderAll() {
@@ -407,7 +409,7 @@ async function init() {
   const setMenu = open => { toolsMenu.hidden = !open; toolsBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); };
   toolsBtn.onclick = e => { e.stopPropagation(); setMenu(toolsMenu.hidden); };
   document.addEventListener('mousedown', e => { if (!$('#toolsWrap').contains(e.target)) setMenu(false); });
-  $$('#toolsMenu [data-tab]').forEach(b => b.onclick = () => { setMenu(false); showTab(b.dataset.tab); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  $$('.main-links [data-tab]').forEach(b => b.onclick = () => { showTab(b.dataset.tab); window.scrollTo({ top: 0, behavior: 'smooth' }); });
 
   $$('[data-anchor]').forEach(a => a.onclick = e => {
     e.preventDefault();
@@ -427,9 +429,11 @@ async function init() {
 
   initHomeSim();
   const hl = $('#hdrLocation');
+  const syncWxBtn = () => { const n = LOCATIONS[state.location]?.name || 'Al Ain'; $('#wxBtnLabel').textContent = n.split(',')[0]; };
   hl.innerHTML = Object.entries(LOCATIONS).map(([k, l]) => `<option value="${k}">${l.name}</option>`).join('');
   hl.value = state.location; $('#hdrScenario').value = state.scenario;
-  hl.onchange = async () => { state.location = hl.value; save(); await loadWeather(); renderAll(); };
+  syncWxBtn();
+  hl.onchange = async () => { state.location = hl.value; syncWxBtn(); save(); await loadWeather(); renderAll(); };
   $('#hdrScenario').onchange = async e => { state.scenario = e.target.value; save(); await loadWeather(); renderAll(); };
   $('#refreshWx').onclick = async () => { await loadWeather(true); renderAll(); toast('Forecast updated'); };
   $('#jumpVoice').onclick = () => $('#voiceBox')?.scrollIntoView({ behavior: 'smooth', block: 'start' });

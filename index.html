@@ -22,40 +22,36 @@
       <span class="brand-word">saqi<span>.</span></span>
     </a>
 
-    <nav class="main-links" aria-label="Main navigation">
-      <a href="#problem" data-anchor="problem">The problem</a>
-      <a href="#engine" data-anchor="engine">How it works</a>
-      <a href="#results" data-anchor="results">Water saved</a>
-      <a href="#today" data-goto="today">Today's plan</a>
+    <nav class="main-links" aria-label="Farm tools">
+      <button type="button" data-tab="today">Today</button>
+      <button type="button" data-tab="farm">My farm</button>
+      <button type="button" data-tab="blend">Water mix</button>
+      <button type="button" data-tab="sensor">Sensors</button>
+      <button type="button" data-tab="drip">Drip health</button>
+      <button type="button" data-tab="planner">Plant</button>
+      <button type="button" data-tab="harvest">Harvest</button>
+      <button type="button" data-tab="share">Sharing</button>
+      <button type="button" data-tab="adviser">Adviser</button>
+      <button type="button" data-tab="about">Why Saqi</button>
     </nav>
 
     <div class="header-actions">
       <div class="tools-wrap" id="toolsWrap">
-        <button type="button" class="tools-trigger" id="toolsBtn" aria-expanded="false" aria-label="Open farm tools">
-          <span class="sm-hide">Farm tools</span><span class="sm-only">Tools</span>
+        <button type="button" class="tools-trigger" id="toolsBtn" aria-expanded="false" aria-label="Location and forecast settings">
+          <span id="wxBtnLabel">Al Ain</span>
           <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="6 9 12 15 18 9"/></svg>
         </button>
         <div class="tools-popover" id="toolsMenu" hidden>
-          <div class="tools-grid">
-            <button type="button" data-tab="today"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg><span>Today's plan</span></button>
-            <button type="button" data-tab="farm"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/></svg><span>My farm</span></button>
-            <button type="button" data-tab="blend"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/></svg><span>Water mix</span></button>
-            <button type="button" data-tab="sensor"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Sensor check</span></button>
-            <button type="button" data-tab="drip"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Drip health</span></button>
-            <button type="button" data-tab="planner"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.8L20 10.7l-5.8 1.9L12 18.5l-1.9-5.9L4.3 10.7l5.8-1.9z"/></svg><span>What to plant</span></button>
-            <button type="button" data-tab="harvest"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Date harvest</span></button>
-            <button type="button" data-tab="share"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg><span>Water sharing</span></button>
-            <button type="button" data-tab="adviser"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg><span>Adviser</span></button>
-            <button type="button" data-tab="about"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span>Why Saqi</span></button>
-          </div>
-          <div class="tools-meta">
+          <div class="tools-meta" style="margin-top:0;padding-top:0;border-top:0">
+            <label style="margin:0;font-size:.74rem">Farm location</label>
             <select id="hdrLocation" class="field-input" aria-label="Farm location"></select>
+            <label style="margin:.2rem 0 0;font-size:.74rem">Weather data</label>
             <select id="hdrScenario" class="field-input" aria-label="Weather source">
               <option value="live">Live forecast · Open-Meteo</option>
               <option value="nov">Scenario: November week</option>
               <option value="july">Scenario: July heatwave</option>
             </select>
-            <div class="row" style="justify-content:space-between">
+            <div class="row" style="justify-content:space-between;margin-top:.2rem">
               <span class="muted">Connection</span>
               <span id="netPill" class="pill">…</span>
             </div>
@@ -66,7 +62,7 @@
       <button type="button" id="themeToggle" class="theme-btn" aria-label="Switch color theme"></button>
       <a href="#demo" class="btn-solid header-cta" data-anchor="demo">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
-        <span class="sm-hide">Launch live demo</span><span class="sm-only">Demo</span>
+        <span>Live demo</span>
       </a>
     </div>
   </div>
