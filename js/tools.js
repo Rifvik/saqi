@@ -278,6 +278,181 @@ function renderAdviser() {
       <td class="num"><span class="tag" style="background:${riskColor(f.score)};color:#fff">${f.score}</span></td></tr>`).join('');
 }
 
+/* ---------- Interactive Field Map, Grid Drawer & Public Data Readings ---------- */
+let lmap = null, lTileSat = null, lTileOsm = null, lSatActive = true, lGroup = null, pubCache = {};
+
+function ensureFieldPoly() {
+  const loc = LOCATIONS[state.location] || LOCATIONS.alain;
+  if (!state.fieldPoly || state.fieldPoly.length < 3) {
+    state.fieldPoly = Engine.rectPolygon(loc.lat, loc.lon, 200, 100);
+  }
+  if (!state.gridStep) state.gridStep = 25;
+}
+
+function renderFieldMap() {
+  ensureFieldPoly();
+  const sel = $('#applyBlockSel');
+  if (sel) {
+    const cur = sel.value;
+    sel.innerHTML = state.blocks.map((b, i) => `<option value="${i}">Apply to Valve ${i + 1}: ${esc(b.name)} (${b.area} ha)</option>`).join('') +
+      `<option value="new">+ Create new block from drawn grid</option>`;
+    if (cur && [...sel.options].some(o => o.value === cur)) sel.value = cur;
+  }
+  $('#gridStepSel').value = String(state.gridStep || 25);
+
+  const st = Engine.polygonStats(state.fieldPoly, state.gridStep);
+  $('#polyKpi').innerHTML = `
+    <div><span>Drawn area</span><b class="good">${fmt(st.areaHa, 2)} ha</b><span>${fmt(st.areaM2)} m²</span></div>
+    <div><span>Perimeter</span><b>${fmt(st.perimM)} m</b><span>${state.fieldPoly.length} corners</span></div>
+    <div><span>Irrigation grid</span><b>${fmt(st.cells)} cells</b><span>${st.cellM}m × ${st.cellM}m sub-plots</span></div>
+    <div><span>Field center</span><b style="font-size:1rem">${st.center.lat.toFixed(4)}°N, ${st.center.lon.toFixed(4)}°E</b><span>WGS84 geodesic</span></div>`;
+
+  if (typeof L === 'undefined') {
+    $('#fieldMap').innerHTML = `<div style="padding:1.2rem;text-align:center" class="muted">Map library offline — area calculated from saved coordinates (${fmt(st.areaHa, 2)} ha).</div>`;
+    return;
+  }
+  if (!lmap) {
+    lmap = L.map('fieldMap', { zoomControl: true }).setView([st.center.lat, st.center.lon], 16);
+    lTileSat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19, attribution: 'Tiles &copy; Esri'
+    });
+    lTileOsm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '&copy; OpenStreetMap'
+    });
+    lTileSat.addTo(lmap);
+    lGroup = L.layerGroup().addTo(lmap);
+    lmap.on('click', e => {
+      state.fieldPoly.push({ lat: +e.latlng.lat.toFixed(6), lon: +e.latlng.lng.toFixed(6) });
+      save(); renderFieldMap();
+    });
+    setTimeout(() => lmap.invalidateSize(), 100);
+  }
+  lGroup.clearLayers();
+  if (state.fieldPoly.length >= 2) {
+    const latlngs = state.fieldPoly.map(p => [p.lat, p.lon]);
+    L.polygon(latlngs, { color: '#2fd47a', weight: 2.5, fillColor: '#2b6e47', fillOpacity: 0.25 }).addTo(lGroup);
+    st.lines.forEach(seg => {
+      L.polyline(seg, { color: '#98cff0', weight: 1, opacity: 0.65, dashArray: '3 3', interactive: false }).addTo(lGroup);
+    });
+  }
+  state.fieldPoly.forEach((p, idx) => {
+    const icon = L.divIcon({
+      className: 'vertex-pin',
+      html: `<span>${idx + 1}</span>`,
+      iconSize: [22, 22],
+      iconAnchor: [11, 11],
+    });
+    const m = L.marker([p.lat, p.lon], { icon, draggable: true }).addTo(lGroup);
+    m.on('dragend', ev => {
+      const ll = ev.target.getLatLng();
+      state.fieldPoly[idx] = { lat: +ll.lat.toFixed(6), lon: +ll.lng.toFixed(6) };
+      save(); renderFieldMap();
+      fetchPublicReadings(st.center.lat, st.center.lon);
+    });
+  });
+}
+
+async function fetchPublicReadings(lat, lon, force = false) {
+  const key = `${lat.toFixed(3)},${lon.toFixed(3)}`;
+  const box = $('#pubDataOut');
+  if (!box) return;
+  if (!force && pubCache[key]) { renderPublicData(pubCache[key]); return; }
+  box.innerHTML = `<p class="muted">Querying Open-Meteo Land-Surface Model, NASA POWER Satellite Archive &amp; OpenStreetMap for <b>${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E</b>…</p>`;
+
+  const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,vapour_pressure_deficit,soil_temperature_0cm,soil_moisture_0_to_1cm,soil_moisture_3_to_9cm,soil_moisture_9_to_27cm&daily=et0_fao_evapotranspiration&forecast_days=1&timezone=auto`;
+  const nasaUrl = `https://power.larc.nasa.gov/api/temporal/climatology/point?parameters=T2M,PRECTOTCORR,ALLSKY_SFC_SW_DWN,RH2M&community=AG&longitude=${lon}&latitude=${lat}&format=JSON`;
+  const nomUrl = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&accept-language=en`;
+
+  const [omRes, nasaRes, nomRes] = await Promise.allSettled([
+    fetch(omUrl).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+    fetch(nasaUrl).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+    fetch(nomUrl).then(r => r.ok ? r.json() : Promise.reject(r.status)),
+  ]);
+
+  const data = {
+    lat, lon, fetchedAt: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+    om: omRes.status === 'fulfilled' ? omRes.value : null,
+    nasa: nasaRes.status === 'fulfilled' ? nasaRes.value?.properties?.parameter : null,
+    place: nomRes.status === 'fulfilled' ? nomRes.value : null,
+  };
+  pubCache[key] = data;
+  renderPublicData(data);
+}
+
+function renderPublicData(d) {
+  const box = $('#pubDataOut');
+  if (!box) return;
+  const c = d.om?.current;
+  const et0Today = d.om?.daily?.et0_fao_evapotranspiration?.[0];
+  const elev = d.om?.elevation;
+  const smSurf = c?.soil_moisture_0_to_1cm != null ? +(c.soil_moisture_0_to_1cm * 100).toFixed(1) : null;
+  const smMid = c?.soil_moisture_3_to_9cm != null ? +(c.soil_moisture_3_to_9cm * 100).toFixed(1) : null;
+  const smRoot = c?.soil_moisture_9_to_27cm != null ? +(c.soil_moisture_9_to_27cm * 100).toFixed(1) : null;
+  const addr = d.place?.address || {};
+  const placeName = [addr.suburb || addr.village || addr.town || addr.city, addr.state, addr.country].filter(Boolean).join(', ') || d.place?.display_name || `${d.lat.toFixed(4)}°N, ${d.lon.toFixed(4)}°E`;
+  const mKey = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'][new Date().getMonth()];
+  const solar = d.nasa?.ALLSKY_SFC_SW_DWN?.[mKey] ?? d.nasa?.ALLSKY_SFC_SW_DWN?.ANN;
+  const nasaT = d.nasa?.T2M?.[mKey] ?? d.nasa?.T2M?.ANN;
+  const nasaRH = d.nasa?.RH2M?.[mKey] ?? d.nasa?.RH2M?.ANN;
+
+  box.innerHTML = `
+    <div class="alert green" style="margin-bottom:.75rem">
+      <span class="alert-icon">📍</span>
+      <span class="alert-body"><b>${esc(placeName)}</b><br><span class="muted mono">${d.lat.toFixed(4)}°N, ${d.lon.toFixed(4)}°E${elev != null ? ` · Elevation ${fmt(elev)} m ASL` : ''} · Fetched ${d.fetchedAt}</span></span>
+    </div>
+
+    ${c ? `
+    <div style="margin-bottom:.75rem">
+      <div class="row" style="justify-content:space-between;margin-bottom:.35rem">
+        <b style="font-size:.86rem">1. Open-Meteo Land-Surface &amp; Soil Model</b>
+        <span class="tag green">live ECMWF / ICON</span>
+      </div>
+      <table>
+        <tr><td>Air temp / Humidity / VPD</td><td class="num"><b>${fmt(c.temperature_2m, 1)} °C</b> · ${fmt(c.relative_humidity_2m)}% · ${fmt(c.vapour_pressure_deficit, 2)} kPa</td></tr>
+        <tr><td>Surface soil temperature (0 cm)</td><td class="num">${fmt(c.soil_temperature_0cm, 1)} °C</td></tr>
+        <tr><td>Soil moisture 0–1 cm / 3–9 cm</td><td class="num">${smSurf ?? '–'}% / ${smMid ?? '–'}% VWC</td></tr>
+        <tr><td>Root-zone soil moisture (9–27 cm)</td><td class="num"><b>${smRoot ?? '–'}% VWC</b></td></tr>
+        <tr><td>Today's FAO-56 reference ET₀</td><td class="num"><b>${et0Today != null ? fmt(et0Today, 2) + ' mm/day' : '–'}</b></td></tr>
+      </table>
+    </div>` : `<div class="alert amber">Open-Meteo live soil feed unreachable.</div>`}
+
+    ${d.nasa ? `
+    <div style="margin-bottom:.85rem">
+      <div class="row" style="justify-content:space-between;margin-bottom:.35rem">
+        <b style="font-size:.86rem">2. NASA POWER Agroclimatology Satellite</b>
+        <span class="tag blue">live satellite normal (${mKey})</span>
+      </div>
+      <table>
+        <tr><td>All-sky solar irradiance</td><td class="num"><b>${fmt(solar, 2)} MJ/m²/day</b></td></tr>
+        <tr><td>Climatological temperature (${mKey})</td><td class="num">${fmt(nasaT, 1)} °C</td></tr>
+        <tr><td>Climatological relative humidity (${mKey})</td><td class="num">${fmt(nasaRH, 1)}%</td></tr>
+      </table>
+    </div>` : ''}
+
+    <div class="row">
+      <button type="button" class="btn sm" id="usePubInSensorBtn">Use live soil &amp; weather in Sensor Check + Simulator</button>
+    </div>`;
+
+  const btn = $('#usePubInSensorBtn');
+  if (btn) btn.onclick = () => {
+    if (smRoot != null) state.sensor.reading = smRoot;
+    if (c?.temperature_2m != null) simCond.temperature = Math.min(55, Math.max(25, Math.round(c.temperature_2m)));
+    if (c?.relative_humidity_2m != null) simCond.humidity = Math.min(80, Math.max(5, Math.round(c.relative_humidity_2m)));
+    if (smRoot != null) simCond.moisture = Math.min(45, Math.max(5, Math.round(smRoot)));
+    save(); renderAll(); renderHomeSim();
+    toast(`Applied root-zone moisture (${smRoot ?? state.sensor.reading}%) & live weather to Sensor Check and Simulator`);
+  };
+}
+
+function moveMapTo(lat, lon, label) {
+  state.fieldPoly = Engine.rectPolygon(lat, lon, 200, 100);
+  state.customLoc = { name: label || `Custom (${lat.toFixed(3)}, ${lon.toFixed(3)})`, lat, lon };
+  LOCATIONS.custom = state.customLoc;
+  if (lmap) lmap.setView([lat, lon], 16);
+  save(); renderFieldMap();
+  fetchPublicReadings(lat, lon, true);
+}
+
 /* ---------- one-time wiring ---------- */
 function initTools() {
   $('#blBlock').onchange = e => { state.blend.block = +e.target.value; save(); renderAll(); };
@@ -301,4 +476,82 @@ function initTools() {
     img.src = URL.createObjectURL(file);
   };
   drawSample('rutab');
+
+  // Map & Public Data controls
+  ensureFieldPoly();
+  $('#gridStepSel').onchange = e => { state.gridStep = +e.target.value || 25; save(); renderFieldMap(); };
+  $('#polyRectBtn').onclick = () => {
+    const c = lmap ? lmap.getCenter() : (LOCATIONS[state.location] || LOCATIONS.alain);
+    const lat = c.lat, lon = c.lng ?? c.lon;
+    state.fieldPoly = Engine.rectPolygon(lat, lon, 200, 100);
+    save(); renderFieldMap(); fetchPublicReadings(lat, lon);
+    toast('Snapped 2.00 ha (200m × 100m) grid box at map center');
+  };
+  $('#polyClearBtn').onclick = () => {
+    state.fieldPoly = [];
+    save(); renderFieldMap();
+    toast('Click 3 or more corners on the map to draw your field grid');
+  };
+  $('#mapLayerBtn').onclick = () => {
+    if (!lmap) return;
+    lSatActive = !lSatActive;
+    if (lSatActive) { lmap.removeLayer(lTileOsm); lTileSat.addTo(lmap); $('#mapLayerBtn').textContent = '🛰️ Satellite'; }
+    else { lmap.removeLayer(lTileSat); lTileOsm.addTo(lmap); $('#mapLayerBtn').textContent = '🗺️ Street'; }
+  };
+  $('#geoBtn').onclick = () => {
+    if (!navigator.geolocation) { toast('Geolocation is not supported by this browser'); return; }
+    toast('Requesting GPS location…');
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        const lat = +pos.coords.latitude.toFixed(5), lon = +pos.coords.longitude.toFixed(5);
+        moveMapTo(lat, lon, `GPS (${lat.toFixed(3)}, ${lon.toFixed(3)})`);
+        toast(`Located at ${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E`);
+      },
+      () => toast('Location permission unavailable — search a place name or click anywhere on the map')
+    );
+  };
+  const doSearch = async () => {
+    const q = $('#mapSearch').value.trim();
+    if (!q) return;
+    const m = q.match(/^\s*(-?\d+(?:\.\d+)?)\s*[,\s]\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (m) { moveMapTo(+m[1], +m[2], `Custom (${(+m[1]).toFixed(3)}, ${(+m[2]).toFixed(3)})`); return; }
+    try {
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(q)}&accept-language=en`);
+      const arr = await r.json();
+      if (!arr.length) { toast('Place not found — try another name or lat, lon'); return; }
+      moveMapTo(+arr[0].lat, +arr[0].lon, arr[0].display_name.split(',').slice(0, 2).join(','));
+      toast('Moved to ' + arr[0].display_name.split(',')[0]);
+    } catch { toast('Search offline — enter coordinates as lat, lon'); }
+  };
+  $('#mapSearchBtn').onclick = doSearch;
+  $('#mapSearch').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
+  $('#refreshPubBtn').onclick = () => {
+    const st = Engine.polygonStats(state.fieldPoly, state.gridStep);
+    fetchPublicReadings(st.center.lat, st.center.lon, true);
+  };
+  $('#applyAreaBtn').onclick = async () => {
+    const st = Engine.polygonStats(state.fieldPoly, state.gridStep);
+    if (st.areaHa < 0.01) { toast('Draw at least 3 corners on the map first'); return; }
+    const areaHa = +st.areaHa.toFixed(2);
+    const target = $('#applyBlockSel').value;
+    if (target === 'new') {
+      state.blocks.push({ name: `Mapped plot (${areaHa} ha)`, crop: 'date', area: areaHa, planted: isoDaysAgo(0), system: 'drip', flow: Math.max(4, +(areaHa * 20).toFixed(1)), habitMin: 180 });
+      state.flowLog.push(Array.from({ length: 14 }, (_, d) => ({ date: isoDaysAgo(13 - d), flow: Math.max(4, +(areaHa * 20).toFixed(1)) })));
+    } else {
+      const b = state.blocks[+target];
+      if (b) b.area = areaHa;
+    }
+    const addr = pubCache[`${st.center.lat.toFixed(3)},${st.center.lon.toFixed(3)}`]?.place?.address;
+    const shortName = addr?.city || addr?.town || addr?.village || addr?.suburb || `Field (${st.center.lat.toFixed(2)}°N, ${st.center.lon.toFixed(2)}°E)`;
+    state.customLoc = { name: `${shortName} (mapped)`, lat: +st.center.lat.toFixed(4), lon: +st.center.lon.toFixed(4) };
+    LOCATIONS.custom = state.customLoc;
+    state.location = 'custom';
+    save();
+    await loadWeather(true);
+    renderAll();
+    toast(`Applied ${areaHa} ha & field location (${shortName}) to farm!`);
+  };
+
+  const st0 = Engine.polygonStats(state.fieldPoly, state.gridStep);
+  fetchPublicReadings(st0.center.lat, st0.center.lon);
 }

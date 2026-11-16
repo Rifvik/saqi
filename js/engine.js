@@ -187,8 +187,70 @@ const Engine = (() => {
     return { baseMinutes, flushPct, totalMinutes, smartLitres, traditionalLitres, savedLitres, savedPct, stressRisk, traditionalStressRisk };
   }
 
+  /* WGS84 local metre conversion, geodesic polygon area/perimeter, and sub-plot grid generator. */
+  function metersScale(lat) {
+    const r = lat * Math.PI / 180;
+    return {
+      mLat: 111132.92 - 559.82 * Math.cos(2 * r) + 1.175 * Math.cos(4 * r),
+      mLon: 111412.84 * Math.cos(r) - 93.5 * Math.cos(3 * r),
+    };
+  }
+  function rectPolygon(lat, lon, widthM = 200, heightM = 100) {
+    const { mLat, mLon } = metersScale(lat);
+    const dLat = (heightM / 2) / mLat, dLon = (widthM / 2) / mLon;
+    return [
+      { lat: +(lat + dLat).toFixed(6), lon: +(lon - dLon).toFixed(6) },
+      { lat: +(lat + dLat).toFixed(6), lon: +(lon + dLon).toFixed(6) },
+      { lat: +(lat - dLat).toFixed(6), lon: +(lon + dLon).toFixed(6) },
+      { lat: +(lat - dLat).toFixed(6), lon: +(lon - dLon).toFixed(6) },
+    ];
+  }
+  function pointInPoly(x, y, xy) {
+    let inside = false;
+    for (let i = 0, j = xy.length - 1; i < xy.length; j = i++) {
+      const xi = xy[i][0], yi = xy[i][1], xj = xy[j][0], yj = xy[j][1];
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / ((yj - yi) || 1e-9) + xi)) inside = !inside;
+    }
+    return inside;
+  }
+  function polygonStats(pts, cellM = 25) {
+    if (!pts || pts.length < 3) return { areaM2: 0, areaHa: 0, perimM: 0, cells: 0, lines: [], center: pts?.[0] || { lat: 24.21, lon: 55.74 } };
+    const lat0 = sum(pts.map(p => p.lat)) / pts.length;
+    const lon0 = sum(pts.map(p => p.lon)) / pts.length;
+    const { mLat, mLon } = metersScale(lat0);
+    const xy = pts.map(p => [(p.lon - lon0) * mLon, (p.lat - lat0) * mLat]);
+    let area2 = 0, perimM = 0;
+    for (let i = 0; i < xy.length; i++) {
+      const [x1, y1] = xy[i], [x2, y2] = xy[(i + 1) % xy.length];
+      area2 += x1 * y2 - x2 * y1;
+      perimM += Math.hypot(x2 - x1, y2 - y1);
+    }
+    const areaM2 = Math.abs(area2) * 0.5;
+    const areaHa = areaM2 / 10000;
+    const xs = xy.map(p => p[0]), ys = xy.map(p => p[1]);
+    const xMin = Math.min(...xs), xMax = Math.max(...xs), yMin = Math.min(...ys), yMax = Math.max(...ys);
+    const step = Math.max(5, +cellM || 25);
+    const maxSpan = Math.max(xMax - xMin, yMax - yMin);
+    const effStep = maxSpan / step > 60 ? maxSpan / 60 : step;
+    const lines = [];
+    for (let x = Math.ceil(xMin / effStep) * effStep; x <= xMax; x += effStep) {
+      lines.push([[lat0 + yMin / mLat, lon0 + x / mLon], [lat0 + yMax / mLat, lon0 + x / mLon]]);
+    }
+    for (let y = Math.ceil(yMin / effStep) * effStep; y <= yMax; y += effStep) {
+      lines.push([[lat0 + y / mLat, lon0 + xMin / mLon], [lat0 + y / mLat, lon0 + xMax / mLon]]);
+    }
+    let cells = 0;
+    for (let x = xMin + effStep / 2; x < xMax; x += effStep) {
+      for (let y = yMin + effStep / 2; y < yMax; y += effStep) {
+        if (pointInPoly(x, y, xy)) cells++;
+      }
+    }
+    if (!cells && areaM2 > 0) cells = Math.max(1, Math.round(areaM2 / (step * step)));
+    return { areaM2, areaHa, perimM, cells, cellM: step, lines, center: { lat: lat0, lon: lon0 } };
+  }
+
   return { kcAt, stageName, seasonLength, hargreavesET0, leachingReq, rootzoneECe, salinityYield,
            blockDecision, evaluate, flowCheck, dayLossPct, optimiseBlend, seasonPlan, shareWater,
-           HOME_SCENARIOS, decideZoneA, sum, clamp };
+           HOME_SCENARIOS, decideZoneA, metersScale, rectPolygon, polygonStats, sum, clamp };
 })();
 if (typeof module !== 'undefined') module.exports = Engine;

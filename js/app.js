@@ -47,6 +47,7 @@ function load() {
   return defaultState();
 }
 let state = load();
+if (state.customLoc) LOCATIONS.custom = state.customLoc;
 function save() { try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { } }
 let wx = null;
 let results = [];
@@ -65,9 +66,9 @@ function climatologyDays(loc) {
   });
 }
 async function loadWeather(force) {
-  const loc = LOCATIONS[state.location];
+  const loc = LOCATIONS[state.location] || LOCATIONS.alain;
   if (state.scenario !== 'live') { wx = { source: SCENARIOS[state.scenario].label, kind: 'scenario', days: scenarioDays(state.scenario) }; return; }
-  const key = 'saqi-wx-' + state.location;
+  const key = 'saqi-wx-' + state.location + '-' + loc.lat.toFixed(2) + '-' + loc.lon.toFixed(2);
   let cached = null; try { cached = JSON.parse(localStorage.getItem(key)); } catch (e) { }
   if (!force && cached && Date.now() - cached.fetchedAt < 3 * 3600e3) { wx = { ...cached, kind: 'live' }; return; }
   try {
@@ -375,11 +376,23 @@ function showTab(id, instant = false) {
   const activeBtn = $$('.main-links [data-tab]').find(b => b.dataset.tab === id);
   $$('.main-links [data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
   if (!instant && activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  if (id === 'farm' && typeof lmap !== 'undefined' && lmap) setTimeout(() => lmap.invalidateSize(), 80);
   history.replaceState(null, '', '#' + id);
+}
+function syncLocationSelect() {
+  const hl = $('#hdrLocation');
+  if (!hl) return;
+  if (state.customLoc) LOCATIONS.custom = state.customLoc;
+  hl.innerHTML = Object.entries(LOCATIONS).map(([k, l]) => `<option value="${k}">${esc(l.name)}</option>`).join('') +
+    `<option value="__gps__">📍 Use my current location (GPS)…</option>`;
+  hl.value = LOCATIONS[state.location] ? state.location : 'alain';
+  const n = LOCATIONS[hl.value]?.name || 'Al Ain';
+  $('#wxBtnLabel').textContent = n.split(',')[0].replace(' (mapped)', '');
 }
 function renderAll() {
   if (!wx) return;
-  renderToday(); renderFarm(); renderBlend(); renderSensor(); renderDrip(); renderPlanner(); renderShare(); renderAdviser();
+  syncLocationSelect();
+  renderToday(); renderFarm(); renderFieldMap(); renderBlend(); renderSensor(); renderDrip(); renderPlanner(); renderShare(); renderAdviser();
   bindInputs(); updateNet();
   $$('[data-goto]').forEach(a => a.onclick = e => { e.preventDefault(); showTab(a.dataset.goto); window.scrollTo({ top: 0, behavior: 'smooth' }); });
 }
@@ -429,11 +442,23 @@ async function init() {
 
   initHomeSim();
   const hl = $('#hdrLocation');
-  const syncWxBtn = () => { const n = LOCATIONS[state.location]?.name || 'Al Ain'; $('#wxBtnLabel').textContent = n.split(',')[0]; };
-  hl.innerHTML = Object.entries(LOCATIONS).map(([k, l]) => `<option value="${k}">${l.name}</option>`).join('');
-  hl.value = state.location; $('#hdrScenario').value = state.scenario;
-  syncWxBtn();
-  hl.onchange = async () => { state.location = hl.value; syncWxBtn(); save(); await loadWeather(); renderAll(); };
+  syncLocationSelect();
+  $('#hdrScenario').value = state.scenario;
+  hl.onchange = async () => {
+    if (hl.value === '__gps__') {
+      syncLocationSelect();
+      showTab('farm');
+      $('#geoBtn')?.click();
+      return;
+    }
+    state.location = hl.value;
+    const loc = LOCATIONS[state.location] || LOCATIONS.alain;
+    moveMapTo(loc.lat, loc.lon, loc.name);
+    syncLocationSelect();
+    save();
+    await loadWeather();
+    renderAll();
+  };
   $('#hdrScenario').onchange = async e => { state.scenario = e.target.value; save(); await loadWeather(); renderAll(); };
   $('#refreshWx').onclick = async () => { await loadWeather(true); renderAll(); toast('Forecast updated'); };
   $('#jumpVoice').onclick = () => $('#voiceBox')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
