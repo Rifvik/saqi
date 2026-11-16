@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#1f1c18">
+<title>Saqi — Salt-Smart Desert Farming</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header class="glass-header">
+  <div class="top">
+    <div class="brand">
+      <div class="emblem" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+      </div>
+      <div>
+        <div class="brand-name">Saqi <span dir="rtl">ساقي</span></div>
+        <small>Salt-smart irrigation for desert farms</small>
+      </div>
+    </div>
+    <div class="top-controls">
+      <select id="hdrLocation" aria-label="Location"></select>
+      <select id="hdrScenario" aria-label="Weather data">
+        <option value="live">Live forecast (Open-Meteo)</option>
+        <option value="nov">Scenario: November week</option>
+        <option value="july">Scenario: July heatwave</option>
+      </select>
+      <span id="netPill" class="pill">…</span>
+      <button type="button" id="themeToggle" class="theme-btn" aria-label="Switch color theme"></button>
+    </div>
+  </div>
+  <nav class="tabs" aria-label="Views">
+    <span class="tab-indicator" aria-hidden="true"></span>
+    <button data-tab="today"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg><span>Today</span></button>
+    <button data-tab="farm"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg><span>My farm</span></button>
+    <button data-tab="blend"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg><span>Water mix</span></button>
+    <button data-tab="sensor"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Sensor check</span></button>
+    <button data-tab="drip"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Drip health</span></button>
+    <button data-tab="planner"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l1.9 5.8L20 10.7l-5.8 1.9L12 18.5l-1.9-5.9L4.3 10.7l5.8-1.9z"/></svg><span>What to plant</span></button>
+    <button data-tab="harvest"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>Date harvest</span></button>
+    <button data-tab="share"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg><span>Water sharing</span></button>
+    <button data-tab="adviser"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg><span>Adviser</span></button>
+    <button data-tab="about"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg><span>Why Saqi</span></button>
+  </nav>
+</header>
+
+<main>
+<!-- TODAY -->
+<section class="tab" id="today">
+  <div class="today-head">
+    <div>
+      <h2>Tonight's watering plan</h2>
+      <p class="lead" id="wxSource">Loading weather…</p>
+    </div>
+    <div class="today-actions">
+      <button class="btn sm ghost" id="refreshWx">↻ Refresh</button>
+      <button class="btn sm" id="jumpVoice">🔊 Send SMS / Audio Plan</button>
+    </div>
+  </div>
+  <div class="forecast" id="forecast"></div>
+  <div style="height:1rem"></div>
+  <div id="alerts"></div>
+  <div class="grid g2" id="decisions"></div>
+
+  <div class="card">
+    <h3>Saqi vs. the usual habit — next 7 days</h3>
+    <p class="muted">The habit is a fixed number of minutes per day (set in <em>My farm</em>). Saqi changes the amount every day using the weather, crop stage, water salinity and irrigation system.</p>
+    <div class="kpi" id="compareKpi"></div>
+    <div class="tablewrap" style="margin-top:.9rem"><table id="compareTable"></table></div>
+    <div id="compareChart" style="margin-top:.9rem"></div>
+  </div>
+
+  <div class="card" id="voiceBox">
+    <h3>🔊 Voice note for the farm worker</h3>
+    <p class="muted">The owner decides, the worker acts. The worker may not read Arabic or English, so each instruction can be played aloud or sent as one short WhatsApp/SMS message (works on a basic connection).</p>
+    <div class="row" style="margin-bottom:.5rem">
+      <select id="voiceLang" style="max-width:220px"></select>
+      <button class="btn sm" id="playAll">▶ Play all</button>
+      <a class="btn sm alt" id="waLink" target="_blank" rel="noopener">WhatsApp</a>
+      <a class="btn sm ghost" id="smsLink">SMS</a>
+      <button class="btn sm ghost" id="copyVoice">Copy</button>
+    </div>
+    <div id="voiceLines"></div>
+  </div>
+</section>
+
+<!-- FARM -->
+<section class="tab" id="farm">
+  <h2>My farm</h2>
+  <p class="lead">One row per valve or block. Saqi keeps everything on this phone (no account, works offline).</p>
+  <div class="card">
+    <h3>Water and alerts</h3>
+    <div class="grid g3">
+      <div class="field"><label>Irrigation water salinity, EC (dS/m)</label><input type="number" step="0.1" min="0" data-bind="water.ec"></div>
+      <div class="field"><label>Water cost (AED per m³: pumping + desal share)</label><input type="number" step="0.1" min="0" data-bind="water.cost"></div>
+      <div class="field"><label>Heat alert at max temp (°C)</label><input type="number" step="1" data-bind="heatThreshold"></div>
+      <div class="field"><label>Start watering after</label><input type="time" data-bind="startTime"></div>
+    </div>
+    <p class="muted">No EC meter? A pocket EC pen costs ≈ 40 AED. Typical UAE groundwater is 2–15 dS/m; desalinated water is &lt; 1 dS/m.</p>
+  </div>
+  <div class="card">
+    <h3>Blocks / valves</h3>
+    <div class="tablewrap"><table id="blockTable"></table></div>
+    <div class="row" style="margin-top:.6rem">
+      <button class="btn sm" id="addBlock">+ Add block</button>
+      <button class="btn sm ghost" id="resetDemo">Reset demo farm</button>
+    </div>
+  </div>
+</section>
+
+<!-- BLEND -->
+<section class="tab" id="blend">
+  <h2>Water mix: fresh + brackish</h2>
+  <p class="lead">Many farms have expensive desalinated water and a cheap salty well. Saqi finds the mix that earns the most for this block, counting the extra flushing water that salty water needs.</p>
+  <div class="grid g2">
+    <div class="card">
+      <div class="field"><label>Block</label><select id="blBlock"></select></div>
+      <div class="grid g2">
+        <div><h3>Source A</h3>
+          <div class="field"><label>Name</label><input type="text" data-bind="blend.a.name"></div>
+          <div class="field"><label>EC (dS/m)</label><input type="number" step="0.1" data-bind="blend.a.ec"></div>
+          <div class="field"><label>Cost (AED/m³)</label><input type="number" step="0.1" data-bind="blend.a.cost"></div>
+        </div>
+        <div><h3>Source B</h3>
+          <div class="field"><label>Name</label><input type="text" data-bind="blend.b.name"></div>
+          <div class="field"><label>EC (dS/m)</label><input type="number" step="0.1" data-bind="blend.b.ec"></div>
+          <div class="field"><label>Cost (AED/m³)</label><input type="number" step="0.1" data-bind="blend.b.cost"></div>
+          <div class="field"><label>Max available (m³/day)</label><input type="number" step="1" data-bind="blend.b.max"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card" id="blendOut"></div>
+  </div>
+</section>
+
+<!-- SENSOR -->
+<section class="tab" id="sensor">
+  <h2>Sensor check: is salt fooling your moisture sensor?</h2>
+  <p class="lead">Cheap capacitive soil sensors (≈ 15 AED) read <b>wetter</b> than reality in salty soil, so the grower waits too long and the plant gets stressed. Saqi corrects the reading.</p>
+  <div class="grid g2">
+    <div class="card">
+      <div class="field"><label>Soil type</label><select data-bind="sensor.soil" id="snSoil"></select></div>
+      <div class="field"><label>Sensor shows (% water)</label><input type="number" step="0.1" data-bind="sensor.reading"></div>
+      <div class="field"><label>Soil salinity ECe (dS/m), from an EC probe or soil test</label><input type="number" step="0.1" data-bind="sensor.ece"></div>
+      <div class="field"><label>Root depth (cm)</label><input type="number" step="5" data-bind="sensor.depth"></div>
+      <div class="field"><label>Salt correction factor k (default 0.35)</label><input type="number" step="0.01" data-bind="sensor.k"></div>
+      <details><summary class="muted">Calibrate k with one soil sample (more accurate)</summary>
+        <p class="muted">Weigh a soil sample, oven-dry it, weigh it again to get the true water %. Enter it with the sensor reading at that moment.</p>
+        <div class="grid g3">
+          <div class="field"><label>Sensor %</label><input type="number" step="0.1" id="calSensor" value="12"></div>
+          <div class="field"><label>True % (dried sample)</label><input type="number" step="0.1" id="calTrue" value="8.5"></div>
+          <div class="field"><label>ECe (dS/m)</label><input type="number" step="0.1" id="calEce" value="8"></div>
+        </div>
+        <button class="btn sm" id="calBtn">Calculate k</button>
+      </details>
+    </div>
+    <div class="card" id="sensorOut"></div>
+  </div>
+</section>
+
+<!-- DRIP -->
+<section class="tab" id="drip">
+  <h2>Drip health: clogs and leaks</h2>
+  <p class="lead">Hard, salty water blocks drippers. Plants show it weeks later. A flow meter (or pump-hours × known flow) shows it the same day. Saqi compares measured flow with what each valve should deliver.</p>
+  <div class="grid g2" id="dripCards"></div>
+  <p class="muted">Demo data: 14 days of realistic synthetic meter readings (the tomato line slowly clogs, the forage line bursts on the last day).</p>
+</section>
+
+<!-- PLANNER -->
+<section class="tab" id="planner">
+  <h2>What to plant: profit per cubic metre of water</h2>
+  <p class="lead">Crops are often picked by habit. Saqi ranks crops by what they earn per m³ of <em>your</em> water at <em>your</em> salinity, including flushing water, and checks if your well can keep up on the hottest day.</p>
+  <div class="card">
+    <div class="grid g3">
+      <div class="field"><label>Water EC (dS/m)</label><input type="number" step="0.1" data-bind="water.ec"></div>
+      <div class="field"><label>Water cost (AED/m³)</label><input type="number" step="0.1" data-bind="water.cost"></div>
+      <div class="field"><label>Irrigation system</label><select data-bind="planner.system" id="plSystem"></select></div>
+      <div class="field"><label>Water available per hectare (m³/day)</label><input type="number" step="1" data-bind="planner.avail"></div>
+      <div class="field"><label>What you grow now (habit)</label><select data-bind="planner.current" id="plCurrent"></select></div>
+    </div>
+  </div>
+  <div class="card"><div class="tablewrap"><table id="plannerTable"></table></div><p class="muted" id="plannerNote"></p></div>
+</section>
+
+<!-- HARVEST -->
+<section class="tab" id="harvest">
+  <h2>Date harvest: photo ripeness check</h2>
+  <p class="lead">Take a photo of a date bunch. Saqi reads the colours on the phone itself (no upload, no internet) and tells you the ripening stage: Kimri → Khalal → Rutab → Tamr.</p>
+  <div class="grid g2">
+    <div class="card">
+      <div class="row">
+        <label class="btn" style="margin:0">📷 Take / choose photo<input type="file" accept="image/*" capture="environment" id="hvFile" hidden></label>
+      </div>
+      <p class="muted">Or try a sample:</p>
+      <div class="row">
+        <button class="btn sm ghost" data-sample="kimri">Kimri (green)</button>
+        <button class="btn sm ghost" data-sample="khalal">Khalal (yellow)</button>
+        <button class="btn sm ghost" data-sample="rutab">Rutab (softening)</button>
+        <button class="btn sm ghost" data-sample="tamr">Tamr (dry)</button>
+      </div>
+      <canvas id="hvCanvas" width="360" height="270" style="margin-top:.8rem;background:#f3ead8"></canvas>
+    </div>
+    <div class="card" id="hvOut"><p class="muted">No photo yet.</p></div>
+  </div>
+</section>
+
+<!-- SHARE -->
+<section class="tab" id="share">
+  <h2>Water sharing between neighbours</h2>
+  <p class="lead">Neighbouring farms often share one well or falaj by fixed hours. Some farms leave water unused while the next farm is short. Saqi lets them trade unused hours as credits, and whatever nobody needs stays in the aquifer.</p>
+  <div class="card">
+    <div class="grid g3">
+      <div class="field"><label>Shared well output (m³/day)</label><input type="number" step="10" data-bind="share.cap"></div>
+      <div class="field"><label>Pump flow (m³/h)</label><input type="number" step="1" data-bind="share.pump"></div>
+      <div class="field"><label>Credit price (AED/m³)</label><input type="number" step="0.1" data-bind="share.price"></div>
+      <div class="field"><label><input type="checkbox" id="shLink"> Use my farm's Saqi plan as my need</label></div>
+    </div>
+  </div>
+  <div class="card"><div class="tablewrap"><table id="shareTable"></table></div><div class="row" style="margin-top:.5rem"><button class="btn sm ghost" id="shAdd">+ Add neighbour</button></div></div>
+  <div class="grid g2"><div class="card" id="shareSummary"></div><div class="card" id="shareSchedule"></div></div>
+</section>
+
+<!-- ADVISER -->
+<section class="tab" id="adviser">
+  <h2>Adviser view: which farm to visit first</h2>
+  <p class="lead">One agricultural adviser may cover hundreds of farms. Free Sentinel-2 satellite images (every 5 days, 10 m) show crop vigour (NDVI) and crop water (NDMI). Saqi ranks farms so the adviser drives to the ones losing crop first.</p>
+  <div class="grid g2">
+    <div class="card"><h3>Farm map</h3><div id="advMap"></div><p class="muted">Colour = risk score. Demo: 40 realistic synthetic farms; production uses Sentinel-2 L2A from Copernicus.</p></div>
+    <div class="card"><h3>Visit today</h3><div id="advTop"></div></div>
+  </div>
+  <div class="card"><div class="tablewrap"><table id="advTable"></table></div></div>
+</section>
+
+<!-- ABOUT -->
+<section class="tab" id="about">
+  <h2>Why Saqi — the one-minute pitch</h2>
+  <div class="card">
+    <p><b>The problem inside the problem: salt.</b> Everyone talks about desert farms using too much water. Hardly anyone asks <em>why</em>. A big hidden reason is salt. Groundwater in the Gulf is brackish, so growers pour on extra water to wash salt away from the roots, by guesswork. They either waste water or let salt quietly cut the harvest. Cheap moisture sensors are fooled by the same salt, and drippers get blocked by it.</p>
+    <p><b>The second hidden problem: the person who decides isn't the person who waters.</b> On many Gulf farms the owner lives in the city and a worker opens the valves, often reading neither Arabic nor English. A perfect recommendation in an English app never reaches the valve.</p>
+    <p><b>Saqi</b> turns weather, crop stage and water salinity into one number per valve, "Valve 2: 165 minutes after 21:00", and sends it as a voice note in the worker's language. It uses <b>exactly enough water for the crop plus exactly enough to flush salt</b>, and no more.</p>
+    <p><b>Who:</b> small and mid-size farms (0.5–20 ha) in the UAE, Oman and Saudi Arabia. <b>Cost:</b> free on a phone they already own. Optional extras: a 40 AED EC pen, a 15 AED moisture sensor, a flow meter.</p>
+  </div>
+  <div class="grid g2">
+    <div class="card">
+      <h3>Desert rules</h3>
+      <ul>
+        <li><b>Water:</b> daily amount = crop need (FAO-56) + minimum salt flush (FAO-29), instead of a fixed habit. Night timing, clog and leak alerts, blending and well-sharing all save more.</li>
+        <li><b>Weak connectivity:</b> the app installs to the phone and works offline. A forecast is ≈ 2 KB, cached for days, and if there's no forecast it falls back to climate normals plus the Hargreaves formula. Instructions go out by SMS/WhatsApp text.</li>
+        <li><b>Little time:</b> one number per valve, one voice note.</li>
+        <li><b>Affordable:</b> no subscription, no hardware required, total app size &lt; 100 KB.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Data and methods (what is real)</h3>
+      <table>
+        <tr><td>Weather + ET₀</td><td><span class="tag green">real</span> Open-Meteo live forecast (FAO-56 Penman-Monteith)</td></tr>
+        <tr><td>Crop water use</td><td><span class="tag green">real</span> FAO-56 Kc curves</td></tr>
+        <tr><td>Salt tolerance</td><td><span class="tag green">real</span> FAO-29 thresholds &amp; Maas-Hoffman slopes</td></tr>
+        <tr><td>Scenario weeks</td><td><span class="tag amber">realistic</span> shaped on UAE interior normals</td></tr>
+        <tr><td>Flow logs, adviser farms</td><td><span class="tag amber">realistic synthetic</span></td></tr>
+        <tr><td>Prices, yields</td><td><span class="tag amber">illustrative</span> UAE farm-gate estimates</td></tr>
+        <tr><td>Sensor salt factor</td><td><span class="tag amber">default</span> field-calibrate with one sample</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Demo script (3 minutes)</h3>
+    <ol>
+      <li><b>Today</b> on the live forecast: one number per valve, and the "why" line under each.</li>
+      <li>Switch to <b>July heatwave</b>: the habit now under-waters, salt builds up and the yield at risk shows in AED. Saqi raises the water and moves it to night.</li>
+      <li>Play the <b>Urdu voice note</b>.</li>
+      <li><b>Sensor check</b>: the sensor says "wait", the corrected value says "irrigate now".</li>
+      <li><b>Water mix</b> and <b>What to plant</b>: alfalfa vs. quinoa or barley on salty water.</li>
+    </ol>
+  </div>
+</section>
+</main>
+<div class="toast" id="toast"></div>
+<footer>Saqi prototype · decisions are agronomic estimates; verify with local extension advice · data stays on this device</footer>
+
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

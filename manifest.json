@@ -1,0 +1,9 @@
+{
+  "name": "Saqi — Salt-Smart Desert Farming",
+  "short_name": "Saqi",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#1f1c18",
+  "theme_color": "#1f1c18",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
