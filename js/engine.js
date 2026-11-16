@@ -76,7 +76,7 @@ const Engine = (() => {
   }
 
   /* Daily irrigation decision for one block. block.area in ha, flow in m³/h (block total, never per-emitter). */
-  function blockDecision(block, crop, wx, ecw, preHeat = false, drainage = 'good') {
+  function blockDecision(block, crop, wx, ecw, preHeat = false, drainage = 'good', soilECe = null) {
     const kc = kcAt(crop, block.day);
     const etc = kc * wx.et0;
     const effRain = wx.rain > 5 ? 0.8 * wx.rain : 0;
@@ -84,8 +84,9 @@ const Engine = (() => {
     const Ea = SYSTEMS[block.system].eff;
     const drainCap = Math.min(MAX_LR, maxDrainLF(drainage));
     const rawLR = leachingReq(ecw, crop.ecThr);
-    let LR = rawLR, drainageBlocked = false;
-    if (LR === null || LR > drainCap) {
+    const soilReclaim = (soilECe != null && soilECe > crop.ecThr) ? clamp((soilECe - crop.ecThr) * 0.025, 0, 0.15) : 0;
+    let LR = rawLR === null ? drainCap : rawLR + soilReclaim, drainageBlocked = false;
+    if (rawLR === null || LR > drainCap) {
       LR = drainCap;
       drainageBlocked = (rawLR === null || rawLR > drainCap);
     }
@@ -96,8 +97,9 @@ const Engine = (() => {
     const grossMm = (netNeed * heatFactor) / ((1 - LR) * Ea);
     const m3 = grossMm * block.area * 10; // 1 mm over 1 ha = 10 m³
     const flow = resolveBlockFlow(block);
-    const minutes = flow > 0 ? m3 / flow * 60 : 0;
-    return { kc, etc, effRain, netNeed, LR, rawLR, drainCap, drainageBlocked, modeledECe, unsuitable, preHeat: Boolean(preHeat), Ea, grossMm, m3, flow, minutes, stage: stageName(crop, block.day) };
+    const invalidFlow = !(flow > 0);
+    const minutes = !invalidFlow ? m3 / flow * 60 : null;
+    return { kc, etc, effRain, netNeed, LR, rawLR, soilReclaim, drainCap, drainageBlocked, modeledECe, unsuitable, preHeat: Boolean(preHeat), Ea, grossMm, m3, flow, invalidFlow, minutes, stage: stageName(crop, block.day) };
   }
 
   /* Baseline #2: Weather-only irrigation (ET₀ × Kc / Ea) without salinity leaching management (LR = 0). */
@@ -110,8 +112,9 @@ const Engine = (() => {
     const grossMm = netNeed / Ea;
     const m3 = grossMm * block.area * 10;
     const flow = resolveBlockFlow(block);
-    const minutes = flow > 0 ? m3 / flow * 60 : 0;
-    return { kc, etc, effRain, netNeed, Ea, grossMm, m3, flow, minutes };
+    const invalidFlow = !(flow > 0);
+    const minutes = !invalidFlow ? m3 / flow * 60 : null;
+    return { kc, etc, effRain, netNeed, Ea, grossMm, m3, flow, invalidFlow, minutes };
   }
 
   /* Estimated root-zone water & salinity balance over a period whose net crop ET need is etcMm.
@@ -151,26 +154,27 @@ const Engine = (() => {
   /* Evaporation + drift loss for sprinkler/flood watering in daytime heat (approximate). */
   function dayLossPct(tmax, wind) { return clamp(5 + 0.6 * (tmax - 30) + 0.3 * wind, 5, 35); }
 
-  /* Blend two water sources: maximise daily profit (revenue × yield − water cost). */
-  function optimiseBlend({ netMm, area, Ea, crop, A, B, dailyRevenue }) {
+  /* Blend two water sources: maximise daily profit (revenue × yield − water cost) within drainage limits. */
+  function optimiseBlend({ netMm, area, Ea, crop, A, B, dailyRevenue, drainage = 'good' }) {
+    const drainCap = Math.min(MAX_LR, maxDrainLF(drainage));
     const curve = [];
     for (let i = 0; i <= 100; i++) {
       const f = i / 100;
       const ecw = (1 - f) * A.ec + f * B.ec;
       let LR = leachingReq(ecw, crop.ecThr), capped = false;
-      if (LR === null || LR > 0.4) { LR = 0.4; capped = true; }
-      const ece = capped ? rootzoneECe(ecw, LR) : crop.ecThr;
+      if (LR === null || LR > drainCap) { LR = drainCap; capped = true; }
+      const ece = rootzoneECe(ecw, Math.max(LR, 0.02));
       const y = salinityYield(crop, ece);
       const V = netMm * area * 10 / ((1 - LR) * Ea);
       const vB = f * V;
       const feasible = vB <= B.max + 1e-9;
       const cost = V * ((1 - f) * A.cost + f * B.cost);
       const profit = dailyRevenue * y - cost;
-      curve.push({ f, ecw, LR, capped, y, V, vA: V - vB, vB, cost, profit, feasible });
+      curve.push({ f, ecw, LR, capped, drainCap, y, V, vA: V - vB, vB, cost, profit, feasible });
     }
     const feas = curve.filter(p => p.feasible);
     const best = feas.reduce((a, b) => (b.profit > a.profit ? b : a), feas[0] || curve[0]);
-    return { curve, best, freshOnly: curve[0], wellOnly: curve[100] };
+    return { curve, best, freshOnly: curve[0], wellOnly: curve[100], drainCap };
   }
 
   /* Whole-season water and crop suitability estimate (based on modeled root-zone ECe & drainage cap). */
@@ -211,27 +215,50 @@ const Engine = (() => {
     return { rows, traded: used, unused: S - used, totalShare: sum(farms.map(f => f.share)) };
   }
 
-  /* Homepage interactive Zone A simulator (2 ha drip-irrigated date palms, 40 m³/h flow). */
+  /* Homepage Zone A simulator powered by FAO-56 Hargreaves + FAO-29 Rhoades blockDecision (2 ha date palms, 40 m³/h, 240-min habit = 160,000 L). */
   const HOME_SCENARIOS = {
-    normal:   { label: 'Normal Day',               conditions: { temperature: 42, salinity: 4.8,  moisture: 26, humidity: 32 } },
-    heatwave: { label: '48°C Heatwave',            conditions: { temperature: 48, salinity: 4.8,  moisture: 18, humidity: 18 } },
-    salinity: { label: 'High Soil Salinity Spike', conditions: { temperature: 42, salinity: 10.5, moisture: 26, humidity: 32 } },
+    normal:   { label: 'Normal Day',               conditions: { temperature: 34, ecw: 3.0, salinity: 3.0, moisture: 10, humidity: 35 } },
+    heatwave: { label: '48°C Heatwave',            conditions: { temperature: 48, ecw: 3.0, salinity: 3.0, moisture: 6,  humidity: 18 } },
+    salinity: { label: 'High Water Salinity Spike', conditions: { temperature: 34, ecw: 6.5, salinity: 6.5, moisture: 10, humidity: 35 } },
   };
-  function decideZoneA({ temperature, salinity, moisture, humidity }) {
-    const baseMinutes = Math.round(clamp(
-      11 + Math.max(0, temperature - 35) * 0.35 + Math.max(0, 28 - moisture) * 0.25 + Math.max(0, 35 - humidity) * 0.04,
-      6, 24
-    ));
-    const flushPct = Math.round(clamp(Math.max(0, salinity - 3) * 4, 0, 25));
-    const totalMinutes = Math.min(30, Math.round(baseMinutes * (1 + flushPct / 100)));
-    const smartLitres = Math.round((totalMinutes / 60) * 40000);
-    const traditionalLitres = 20000;
+  function decideZoneA({ temperature, ecw, salinity, moisture = 10, humidity = 35, drainage = 'good' }) {
+    const waterEc = +(ecw ?? salinity ?? 3.0);
+    const doy = Math.round(clamp(312 - Math.max(0, temperature - 33) * 8.5, 185, 325));
+    const dT = clamp(17 - 0.14 * humidity, 7, 17);
+    const baseEt0 = hargreavesET0(temperature, temperature - dT, 24.21, doy);
+    // Moisture adjustment anchored on sandy soil reserve (WP 4%, refill 7%, FC 10%)
+    const moistFactor = moisture < 7 ? clamp(1 + (7 - moisture) * 0.04, 1, 1.15)
+      : moisture > 14 ? clamp(1 - (moisture - 14) * 0.015, 0.72, 1) : 1.0;
+    const et0 = baseEt0 * moistFactor;
+    const crop = (typeof CROPS !== 'undefined' && CROPS.date) ? CROPS.date : { kc: [0.9, 0.95, 0.95], perennial: true, stages: [0, 0, 365, 0], ecThr: 4.0, ecSlope: 3.6, ky: 0.8 };
+    const block = { crop: 'date', area: 2.0, day: 180, system: 'drip', flow: 40, habitMin: 240 };
+    const dec = blockDecision(block, crop, { et0, rain: 0 }, waterEc, temperature >= 45, drainage);
+    const wxOnly = weatherOnlyDecision(block, crop, { et0, rain: 0 });
+    const evalSmart = evaluate(crop, block, dec.m3, dec.etc, waterEc, drainage);
+    const evalWx = evaluate(crop, block, wxOnly.m3, dec.etc, waterEc, drainage);
+    const traditionalLitres = Math.round(block.habitMin / 60 * block.flow * 1000);
+    const evalHabit = evaluate(crop, block, traditionalLitres / 1000, dec.etc, waterEc, drainage);
+
+    const flushPct = Math.round((1 / Math.max(0.1, 1 - dec.LR) - 1) * 100);
+    const totalMinutes = Math.round((dec.minutes || 0) / 5) * 5;
+    const baseMinutes = Math.round((wxOnly.minutes || 0) / 5) * 5;
+    const smartLitres = Math.round(dec.m3 * 1000);
+    const weatherOnlyLitres = Math.round(wxOnly.m3 * 1000);
     const savedLitres = traditionalLitres - smartLitres;
     const savedPct = Math.round((savedLitres / traditionalLitres) * 100);
-    const stressRisk = (salinity >= 8 || moisture < 16 || temperature >= 48) ? 'High'
-      : (salinity >= 5 || moisture < 23 || temperature >= 43) ? 'Moderate' : 'Low';
-    const traditionalStressRisk = (salinity >= 5 || temperature >= 45) ? 'High' : 'Moderate';
-    return { baseMinutes, flushPct, totalMinutes, smartLitres, traditionalLitres, savedLitres, savedPct, stressRisk, traditionalStressRisk };
+    const riskFrom = (ev, capped = false) => (ev.y < 0.70 || capped) ? 'High' : ev.y < 0.94 ? 'Moderate' : 'Low';
+    const stressRisk = riskFrom(evalSmart, dec.drainageBlocked);
+    const weatherStressRisk = riskFrom(evalWx, false);
+    const traditionalStressRisk = evalHabit.y < 0.70 ? 'High' : evalHabit.y < 0.94 ? 'Moderate' : (traditionalLitres > smartLitres * 1.25 ? 'Waste (+excess)' : 'Moderate');
+    return {
+      et0: +et0.toFixed(2), ecw: waterEc, LR: dec.LR, modeledECe: dec.modeledECe,
+      baseMinutes, flushPct, totalMinutes,
+      smartLitres, weatherOnlyLitres, traditionalLitres, savedLitres, savedPct,
+      stressRisk, weatherStressRisk, traditionalStressRisk,
+      smartYieldPct: Math.round(evalSmart.y * 100),
+      wxYieldPct: Math.round(evalWx.y * 100),
+      habitYieldPct: Math.round(evalHabit.y * 100),
+    };
   }
 
   /* WGS84 local metre conversion, geodesic polygon area/perimeter, and sub-plot grid generator. */

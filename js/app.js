@@ -37,7 +37,7 @@ function defaultState() {
     drainage: 'good', heatThreshold: 45, startTime: '21:00', lang: 'ur',
     blocks, flowLog: demoFlowLog(blocks),
     blend: { a: { name: 'Desalinated (RO)', ec: 0.4, cost: 5.0 }, b: { name: 'Brackish well', ec: 9.0, cost: 0.5, max: 200 }, block: 1 },
-    sensor: { soil: 'sand', reading: 9.5, ece: 8, k: 0.35, depth: 40, tested: isoDaysAgo(3) },
+    sensor: { soil: 'sand', reading: 9.5, ece: 8, k: 0.35, depth: 40, tested: isoDaysAgo(3), useForFlush: false },
     share: { cap: 400, pump: 25, price: 1.5, link: true, farms: [
       { name: 'My farm', share: 25, need: 150 }, { name: 'Al Kaabi farm', share: 25, need: 60 }, { name: 'Rashid farm', share: 20, need: 140 },
       { name: 'Hamad farm', share: 15, need: 30 }, { name: 'Saeed farm', share: 15, need: 110 }] },
@@ -116,12 +116,13 @@ function computeAll() {
   const ecw = +state.water.ec || 0; const n = wx.days.length; const thr = +state.heatThreshold;
   const drainage = state.drainage || 'good';
   const prevECe = +state.sensor?.ece || null;
+  const soilForFlush = state.sensor?.useForFlush ? prevECe : null;
   return state.blocks.map((b, bi) => {
     const crop = CROPS[b.crop];
     const flow = Engine.resolveBlockFlow(b);
     const daily = wx.days.map((d, i) => {
       const preHeat = Boolean(d.tmax < thr && wx.days[i + 1] && wx.days[i + 1].tmax >= thr);
-      return Engine.blockDecision({ ...b, flow, day: dayOf(b, i) }, crop, d, ecw, preHeat, drainage);
+      return Engine.blockDecision({ ...b, flow, day: dayOf(b, i) }, crop, d, ecw, preHeat, drainage, soilForFlush);
     });
     const weatherDaily = wx.days.map((d, i) => Engine.weatherOnlyDecision({ ...b, flow, day: dayOf(b, i) }, crop, d));
     const weekOurs = sum(daily.map(x => x.m3));
@@ -163,7 +164,7 @@ function renderToday() {
   const ecAge = daysSince(state.water.tested);
   const ecStale = ecAge == null || ecAge > 30 || (state.water.source || '').startsWith('estimated');
   const ecConf = `<span class="tag ${ecStale ? 'amber' : 'green'}">Water ECw: ${fmt(ecw, 1)} dS/m · ${esc(state.water.source || 'measured')}${ecAge != null ? ` · ${ecAge === 0 ? 'today' : ecAge + 'd ago'}` : ''}${ecStale ? ' (verify soon)' : ''}</span>`;
-  const drainConf = `<span class="tag ${drainage === 'poor' ? 'red' : drainage === 'moderate' ? 'amber' : 'blue'}">Soil ECe: modeled FAO-29 steady-state (${drainage} drainage)</span>`;
+  const drainConf = `<span class="tag ${drainage === 'poor' ? 'red' : drainage === 'moderate' ? 'amber' : 'blue'}">Soil ECe: modeled FAO-29 steady-state (${drainage} drainage)${state.sensor?.ece != null ? ` · Sensor ${fmt(state.sensor.ece, 1)} dS/m (${state.sensor.useForFlush ? 'flush active' : 'monitor only'})` : ''}</span>`;
   const flowBad = results.some(r => r.flags.status !== 'ok');
   const flowConf = `<span class="tag ${flowBad ? 'red' : 'blue'}">Flow: ${flowBad ? 'anomaly detected — verify emitters/pipes' : 'synthetic 14d meter baseline'}</span>`;
   $('#dataConfidence').innerHTML = wxConf + ecConf + drainConf + flowConf;
@@ -190,6 +191,9 @@ function renderToday() {
     al.push(`<div class="alert red">${icWarn}<span class="alert-body"><b>Heat ≥ ${thr} °C on ${hotDays.map(d => new Date(d.date + 'T12:00').toLocaleDateString('en-GB', { weekday: 'short' })).join(', ')}.</b> Water only between ${esc(state.startTime)} and 05:00, and give about 10% extra the evening before so roots start the hot day full.${save > 1 ? ` Night watering of sprinkler/flood blocks avoids ≈ <b>${fmt(save)} m³</b> of evaporation this week.` : ''}</span></div>`);
   }
   results.forEach(r => {
+    if (r.today.invalidFlow) {
+      al.push(`<div class="alert red">${icWarn}<span class="alert-body"><b>Valve ${r.bi + 1} (${esc(r.b.name)}) block flow is 0 m³/h:</b> runtime cannot be calculated (crop still needs <b>${fmt(r.today.m3, 1)} m³</b>). Set emitter L/h × count or measured block flow in <a href="#farm" data-goto="farm">My farm</a>.</span></div>`);
+    }
     if (r.today.drainageBlocked) {
       al.push(`<div class="alert amber">${icWarn}<span class="alert-body"><b>${esc(r.b.name)} (drainage limit):</b> full salt flushing is blocked by <b>${drainage} drainage</b> (max LF ${pct(r.today.drainCap)}). Modeled root-zone ECe rises to <b>${fmt(r.today.modeledECe, 1)} dS/m</b> vs crop threshold ${r.crop.ecThr} dS/m — avoid over-flushing (waterlogging risk); instead blend fresher water <a href="#blend" data-goto="blend">Water mix</a> or check suitability <a href="#planner" data-goto="planner">Suitability</a></span></div>`);
     } else if (r.today.unsuitable) {
@@ -204,23 +208,24 @@ function renderToday() {
   // decision cards
   const trendLabel = tr => tr === 'increasing' ? '<span class="bad">↑ salt accumulating</span>' : tr === 'flushing' ? '<span class="good">↓ salt flushing</span>' : '<span class="good">→ salt stable</span>';
   $('#decisions').innerHTML = results.map(r => {
-    const t = r.today, b = r.b, mins = round5(t.minutes), skip = mins < 5;
+    const t = r.today, b = r.b, invalidFlow = Boolean(t.invalidFlow), mins = invalidFlow ? 0 : round5(t.minutes), skip = !invalidFlow && mins < 5;
     const habitM3 = b.habitMin / 60 * r.flow; const diff = t.m3 > 0 ? (habitM3 - t.m3) / t.m3 : 1;
     const flush = 1 / (1 - t.LR) - 1;
     const d0 = wx.days[0];
-    const cls = (t.unsuitable || t.drainageBlocked || r.flags.status !== 'ok') ? 'warnb' : skip ? 'skip' : '';
+    const cls = (invalidFlow || t.unsuitable || t.drainageBlocked || r.flags.status !== 'ok') ? 'warnb' : skip ? 'skip' : '';
     const tagCls = cls === 'warnb' ? 'red' : cls === 'skip' ? 'green' : 'blue';
-    const habitTxt = Math.abs(diff) < 0.1 ? `<span class="good"><b>close to Saqi</b></span>` :
-      diff > 0 ? `<span class="bad"><b>+${pct(diff)} over need: ${fmt(habitM3 - t.m3)} m³ wasted today</b></span>` :
-        `<span class="bad"><b>${pct((t.m3 - habitM3) / t.m3)} under need: water stress and salt build-up</b></span>`;
+    const habitTxt = invalidFlow ? `<span class="bad"><b>Set block flow &gt; 0 m³/h to compare runtimes</b></span>` :
+      Math.abs(diff) < 0.1 ? `<span class="good"><b>close to Saqi</b></span>` :
+        diff > 0 ? `<span class="bad"><b>+${pct(diff)} over need: ${fmt(habitM3 - t.m3)} m³ wasted today</b></span>` :
+          `<span class="bad"><b>${pct((t.m3 - habitM3) / t.m3)} under need: water stress and salt build-up</b></span>`;
     return `<div class="card decision ${cls}">
       <div class="row" style="justify-content:space-between;align-items:flex-start"><h3>Valve ${r.bi + 1} · ${esc(b.name)}</h3><span class="tag ${tagCls}">${r.crop.name} · ${t.stage}</span></div>
-      <div class="big">${skip ? 'No water today' : `${fmt(mins)} min <span class="after">after ${esc(state.startTime)}</span>`}</div>
+      <div class="big">${invalidFlow ? '<span class="bad">Set block flow &gt; 0 m³/h</span>' : skip ? 'No water today' : `${fmt(mins)} min <span class="after">after ${esc(state.startTime)}</span>`}</div>
       <div class="metrics">${fmt(t.m3, 1)} m³ · ${fmt(t.grossMm, 1)} mm · ${b.area} ha ${SYSTEMS[b.system].name.toLowerCase()} · block flow ${fmt(r.flow, 1)} m³/h</div>
       <div class="habit-line">Fixed habit: ${b.habitMin} min (${fmt(habitM3, 1)} m³) → ${habitTxt}</div>
       <div class="why">Why: ET₀ ${fmt(d0.et0, 1)} mm × Kc ${fmt(t.kc, 2)} (${t.stage}) = <b>${fmt(t.etc, 1)} mm</b> crop ET${t.effRain ? ` − ${fmt(t.effRain, 1)} mm rain` : ''}${t.preHeat ? ' · <b>+10% pre-heatwave buffer</b>' : ''}
-      · salt flush <b>+${pct(flush)}</b> (modeled root-zone ECe <b>${fmt(t.modeledECe, 1)} dS/m</b> vs crop ECe threshold ${r.crop.ecThr} dS/m; drainage: ${drainage})
-      · ${SYSTEMS[b.system].name.toLowerCase()} efficiency ${pct(t.Ea)} → ${fmt(t.grossMm, 1)} mm × ${b.area} ha = ${fmt(t.m3, 1)} m³ at ${fmt(r.flow, 1)} m³/h (${trendLabel(r.eo.saltTrend)}).</div>
+      · salt flush <b>+${pct(flush)}</b>${t.soilReclaim > 0 ? ' (incl. sensor ECe reclamation)' : ''} (modeled root-zone ECe <b>${fmt(t.modeledECe, 1)} dS/m</b> vs crop ECe threshold ${r.crop.ecThr} dS/m; drainage: ${drainage})
+      · ${SYSTEMS[b.system].name.toLowerCase()} efficiency ${pct(t.Ea)} → ${fmt(t.grossMm, 1)} mm × ${b.area} ha = ${fmt(t.m3, 1)} m³${invalidFlow ? ' (set valid block flow to compute minutes)' : ` at ${fmt(r.flow, 1)} m³/h`} (${trendLabel(r.eo.saltTrend)}).</div>
     </div>`;
   }).join('');
 
@@ -237,10 +242,10 @@ function renderToday() {
   const habitNetAED = habitWaterSaved * cost + habitYieldVal;
 
   $('#compareKpi').innerHTML = `
-    <div><span>Saqi vs. Fixed Habit</span><b class="${habitWaterSaved >= 0 ? 'good' : 'warn'}">${habitWaterSaved >= 0 ? '−' : '+'}${fmt(Math.abs(habitWaterSaved))} m³</b><span>${habitWaterSaved >= 0 ? 'saved' : 'more'} (${pct(tH > 0 ? Math.abs(habitWaterSaved) / tH : 0)}) · ${fmt(tO)} vs ${fmt(tH)} m³</span></div>
+    <div><span>Saqi vs. Fixed Habit</span><b class="${habitWaterSaved >= 0 ? 'good' : 'warn'}">${habitWaterSaved >= 0 ? '−' : '+'}${fmt(Math.abs(habitWaterSaved))} m³</b><span>${habitWaterSaved >= 0 ? `saved (${pct(tH > 0 ? habitWaterSaved / tH : 0)} less)` : `more (${pct(tH > 0 ? Math.abs(habitWaterSaved) / tH : 0)}) — protects yield from heat/salt under-watering`} · ${fmt(tO)} vs ${fmt(tH)} m³</span></div>
     <div><span>Salt flush vs. Weather-Only</span><b>+${fmt(Math.max(0, saltFlushM3))} m³</b><span>extra water to leach salts (${fmt(tO)} vs ${fmt(tW)} m³)</span></div>
     <div><span>Est. value of salt management</span><b class="${saltNetValueAED >= 0 ? 'good' : 'warn'}">${saltNetValueAED >= 0 ? '+' : '−'}${fmt(Math.abs(saltNetValueAED))} AED</b><span>+${fmt(saltYieldProtectedAED)} AED est. crop protected vs weather-only</span></div>
-    <div><span>Est. total benefit vs. Habit</span><b class="${habitNetAED >= 0 ? 'good' : 'bad'}">${fmt(habitNetAED)} AED</b><span>water cost diff + est. stress protection</span></div>`;
+    <div><span>Est. total benefit vs. Habit</span><b class="${habitNetAED >= 0 ? 'good' : 'bad'}">${habitNetAED >= 0 ? '+' : '−'}${fmt(Math.abs(habitNetAED))} AED</b><span>water cost diff + est. stress protection</span></div>`;
 
   $('#compareTable').innerHTML = `<tr><th>Valve</th><th class="num">Saqi m³</th><th class="num">Wx-only m³</th><th class="num">Habit m³</th><th class="num">Modeled ECe (Saqi / Wx-only / Habit)</th><th class="num">Est. rel. yield (Saqi / Wx-only / Habit)</th><th class="num">Salt-aware est. gain</th></tr>` +
     results.map(r => {
@@ -271,8 +276,13 @@ function voiceLines(lang) {
   const hotSoon = wx.days.slice(0, 3).some(d => d.tmax >= +state.heatThreshold);
   if (hotSoon) lines.push(L('heat'));
   results.forEach(r => {
-    const v = r.bi + 1, m = round5(r.today.minutes);
-    lines.push(m < 5 ? L('none').replace('{v}', v) : L('run').replace('{v}', v).replace('{m}', m).replace('{t}', state.startTime));
+    const v = r.bi + 1;
+    if (r.today.invalidFlow) {
+      lines.push(L('flowZero').replace('{v}', v));
+    } else {
+      const m = round5(r.today.minutes);
+      lines.push(m < 5 ? L('none').replace('{v}', v) : L('run').replace('{v}', v).replace('{m}', m).replace('{t}', state.startTime));
+    }
     if (r.flags.status === 'clog') lines.push(L('clog').replace('{v}', v));
     if (r.flags.status === 'leak') lines.push(L('leak').replace('{v}', v));
   });
@@ -350,11 +360,16 @@ function renderFarm() {
 /* ---------- generic binding ---------- */
 function bindInputs() {
   $$('[data-bind]').forEach(el => {
-    if (document.activeElement !== el) el.value = getPath(state, el.dataset.bind);
+    const cur = getPath(state, el.dataset.bind);
+    if (document.activeElement !== el) {
+      if (el.type === 'checkbox') el.checked = Boolean(cur);
+      else el.value = cur;
+    }
     if (!el._bound) {
       el._bound = true;
       el.addEventListener('change', async () => {
-        setPath(state, el.dataset.bind, el.type === 'number' ? (+el.value || 0) : el.value);
+        const val = el.type === 'checkbox' ? el.checked : el.type === 'number' ? (+el.value || 0) : el.value;
+        setPath(state, el.dataset.bind, val);
         save(); renderAll();
       });
     }
@@ -364,43 +379,61 @@ function bindInputs() {
 /* ---------- homepage Zone A simulator ---------- */
 let simCond = { ...Engine.HOME_SCENARIOS.normal.conditions };
 function renderHomeSim() {
-  const d = Engine.decideZoneA(simCond);
+  const ecw = +(simCond.ecw ?? simCond.salinity ?? 3.0);
+  const d = Engine.decideZoneA({ ...simCond, ecw });
   $('#valTemp').textContent = simCond.temperature + '°C';
-  $('#valSal').textContent = simCond.salinity.toFixed(1) + ' dS/m';
+  $('#valSal').textContent = ecw.toFixed(1) + ' dS/m';
   $('#valMoist').textContent = simCond.moisture + '%';
   $('#valHum').textContent = simCond.humidity + '%';
 
-  $('#hpSavedLitres').textContent = fmt(d.savedLitres);
-  $('#hpSavedBadge').textContent = `${d.savedPct}% less than habit`;
+  const saved = d.savedLitres >= 0;
+  const absSaved = Math.abs(d.savedLitres);
+  const barMax = Math.max(d.traditionalLitres, d.smartLitres, 1);
+  if ($('#hpSavedLabel')) $('#hpSavedLabel').textContent = saved ? 'Water saved vs. 240-min fixed habit' : 'Crop protection water added vs. habit';
+  $('#hpSavedLitres').textContent = (saved ? '' : '+') + fmt(absSaved);
+  $('#hpSavedBadge').textContent = saved ? `${d.savedPct}% less than habit` : `+${Math.abs(d.savedPct)}% added — stops heat & salt stress`;
+  if ($('#hpTradBar')) $('#hpTradBar').style.width = `${(d.traditionalLitres / barMax) * 100}%`;
   $('#hpTradL').textContent = fmt(d.traditionalLitres) + ' L';
   $('#hpSmartL').textContent = fmt(d.smartLitres) + ' L';
-  $('#hpSmartBar').style.width = `${(d.smartLitres / d.traditionalLitres) * 100}%`;
+  $('#hpSmartBar').style.width = `${(d.smartLitres / barMax) * 100}%`;
 
-  $('#resSavedPct').textContent = d.savedPct + '%';
-  $('#resSavedL').textContent = fmt(d.savedLitres) + ' L';
+  if ($('#resTitle')) $('#resTitle').textContent = saved ? 'Water saved vs. guesswork' : 'Yield protected in extreme heat';
+  if ($('#resSub')) $('#resSub').textContent = saved
+    ? `A fixed 240-min habit uses ${fmt(d.traditionalLitres)} L on 2 ha. Saqi gives ${fmt(d.smartLitres)} L: crop ET₀ (${d.et0} mm/d) + exact salt flush.`
+    : `A fixed 240-min habit (${fmt(d.traditionalLitres)} L) under-waters today (${d.habitYieldPct}% est. yield). Saqi increases run time to stop stress.`;
+  $('#resSavedPct').textContent = saved ? `${d.savedPct}%` : `+${Math.abs(d.savedPct)}%`;
+  if ($('#resPctLabel')) $('#resPctLabel').textContent = saved ? 'water saved' : 'heat/salt buffer';
+  $('#resSavedL').textContent = saved ? fmt(absSaved) + ' L' : fmt(d.smartLitres) + ' L';
+  if ($('#resVolLabel')) $('#resVolLabel').textContent = saved ? 'saved today' : 'recommended today';
 
   $('#simMins').textContent = d.totalMinutes + ' mins';
   const fl = $('#simFlush');
   fl.style.display = d.flushPct > 0 ? 'inline-flex' : 'none';
-  fl.querySelector('span').textContent = `Add ${d.flushPct}% salt-leaching flush`;
+  fl.querySelector('span').textContent = `Add +${d.flushPct}% salt-leaching flush (modeled ECe ${d.modeledECe.toFixed(1)} dS/m)`;
   $('#simReason').textContent =
-    (simCond.moisture < 23 ? 'Dry soil and ' : 'Current moisture and ') +
-    (simCond.temperature >= 43 ? 'extreme heat increase crop demand. ' : 'the heat set the base run time. ') +
-    (d.flushPct > 0 ? 'The extra flush moves salt below the root zone instead of letting it build up.' : 'No extra salt flush is needed at this salinity.');
-  $('#simRisk').textContent = `${d.stressRisk} crop stress risk`;
-  $('#simLitres').textContent = `${fmt(d.smartLitres)} litres total`;
+    `FAO-56 ET₀ ${d.et0} mm/d × Date palm Kc 0.95` +
+    (simCond.moisture < 7 ? ' (+dry sandy soil deficit factor)' : '') +
+    (simCond.temperature >= 45 ? ' + 10% heatwave buffer' : '') +
+    ` with ${d.flushPct}% FAO-29 salt flush at ECw ${ecw.toFixed(1)} dS/m.`;
+  $('#simRisk').textContent = `${d.stressRisk} stress risk (${d.smartYieldPct}% est. yield)`;
+  $('#simLitres').textContent = `${fmt(d.smartLitres)} L today (Weather-only: ${fmt(d.weatherOnlyLitres)} L)`;
 
   $('#cmpTradL').textContent = fmt(d.traditionalLitres) + ' L';
+  if ($('#cmpWxL')) $('#cmpWxL').textContent = fmt(d.weatherOnlyLitres) + ' L';
   $('#cmpSmartL').textContent = fmt(d.smartLitres) + ' L';
-  $('#cmpTradRisk').textContent = d.traditionalStressRisk;
-  $('#cmpSmartRisk').textContent = d.stressRisk;
-  $('#cmpSavedPct').textContent = d.savedPct + '%';
-  $('#cmpSavedL').textContent = fmt(d.savedLitres);
+  $('#cmpTradRisk').textContent = `${d.traditionalStressRisk} (${d.habitYieldPct}%)`;
+  if ($('#cmpWxRisk')) $('#cmpWxRisk').textContent = `${d.weatherStressRisk} (${d.wxYieldPct}%)`;
+  $('#cmpSmartRisk').textContent = `${d.stressRisk} (${d.smartYieldPct}%)`;
+  if ($('#cmpSavedTitle')) $('#cmpSavedTitle').textContent = saved ? 'Water saved vs. habit' : 'Crop protection vs. habit';
+  $('#cmpSavedPct').textContent = saved ? `${d.savedPct}%` : `+${Math.abs(d.savedPct)}%`;
+  if ($('#cmpSavedNote')) $('#cmpSavedNote').innerHTML = saved
+    ? `<span id="cmpSavedL">${fmt(absSaved)}</span> litres stay available vs. habit, while protecting salt balance vs. weather-only.`
+    : `<span id="cmpSavedL">${fmt(absSaved)}</span> extra litres prevent crop collapse when 240-min habit under-waters (${d.habitYieldPct}% est. yield).`;
 }
 function initHomeSim() {
   const syncSliders = () => {
     $('#slTemp').value = simCond.temperature;
-    $('#slSal').value = simCond.salinity;
+    $('#slSal').value = simCond.ecw ?? simCond.salinity ?? 3.0;
     $('#slMoist').value = simCond.moisture;
     $('#slHum').value = simCond.humidity;
   };
@@ -411,15 +444,17 @@ function initHomeSim() {
     syncSliders(); renderHomeSim();
   });
   const bindSlider = (id, key) => $(id).addEventListener('input', e => {
-    simCond[key] = +e.target.value;
+    const val = +e.target.value;
+    simCond[key] = val;
+    if (key === 'ecw') simCond.salinity = val;
     $$('#simScenarios button').forEach(x => x.classList.remove('active'));
     renderHomeSim();
   });
-  bindSlider('#slTemp', 'temperature'); bindSlider('#slSal', 'salinity');
+  bindSlider('#slTemp', 'temperature'); bindSlider('#slSal', 'ecw');
   bindSlider('#slMoist', 'moisture'); bindSlider('#slHum', 'humidity');
   $('#simCopy').onclick = async () => {
     const d = Engine.decideZoneA(simCond);
-    const msg = `Irrigate Zone A for ${d.totalMinutes} mins at 4:30 AM${d.flushPct > 0 ? ` — Add ${d.flushPct}% salt-leaching flush` : ''}.`;
+    const msg = `Irrigate Zone A (2 ha Date palms) for ${d.totalMinutes} mins after 21:00 (${fmt(d.smartLitres)} L${d.flushPct > 0 ? ` incl. +${d.flushPct}% salt flush` : ''}).`;
     try { await navigator.clipboard.writeText(msg); toast('Watering instruction copied'); }
     catch { toast(msg); }
   };
@@ -427,7 +462,7 @@ function initHomeSim() {
 }
 
 /* ---------- tabs & init ---------- */
-const TAB_ORDER = ['home', 'today', 'farm', 'blend', 'sensor', 'drip', 'planner', 'harvest', 'share', 'adviser', 'about'];
+const TAB_ORDER = ['home', 'today', 'farm', 'assistant', 'blend', 'sensor', 'drip', 'planner', 'harvest', 'share', 'adviser', 'about'];
 let leaveTimer = null;
 function showTab(id, instant = false) {
   if (!document.getElementById(id)) id = 'home';
@@ -453,8 +488,14 @@ function showTab(id, instant = false) {
   nextSec.classList.add('active');
   const activeBtn = $$('.main-links [data-tab]').find(b => b.dataset.tab === id);
   $$('.main-links [data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
-  if (!instant && activeBtn) activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  $$('.nav-dd').forEach(dd => {
+    const trigger = dd.querySelector('.nav-drop-btn');
+    if (trigger) trigger.classList.toggle('active', Boolean(dd.querySelector('.nav-menu [data-tab].active')));
+  });
+  if (!instant && activeBtn && window.innerWidth > 960) activeBtn.closest('.nav-dd')?.querySelector('.nav-drop-btn') || activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   if (id === 'farm' && typeof lmap !== 'undefined' && lmap) setTimeout(() => lmap.invalidateSize(), 80);
+  if (id === 'assistant' && typeof aiOnShow === 'function') aiOnShow();
+  const fab = $('#aiFab'); if (fab) fab.hidden = (id === 'assistant');
   if (typeof refreshReveals === 'function') refreshReveals(prevSec !== nextSec && !instant);
   history.replaceState(null, '', '#' + id);
 }
@@ -474,6 +515,8 @@ function renderAll() {
   renderToday(); renderFarm(); renderFieldMap(); renderBlend(); renderSensor(); renderDrip(); renderPlanner(); renderShare(); renderAdviser();
   bindInputs(); updateNet();
   $$('[data-goto]').forEach(a => a.onclick = e => { e.preventDefault(); showTab(a.dataset.goto); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  if ($('#assistant')?.classList.contains('active') && typeof aiOnShow === 'function') aiOnShow();
+  else if (typeof aiRenderCtxBar === 'function') aiRenderCtxBar();
   if (typeof refreshReveals === 'function') refreshReveals(false);
 }
 const SITE_LANGS = [
@@ -519,6 +562,7 @@ function setSiteLanguage(code) {
   const lbl = $('#langBtnLabel'); if (lbl) lbl.textContent = shortLabel;
 
   if (LANGS[code]) { state.lang = code; save(); if (wx) renderVoice(); }
+  document.dispatchEvent(new CustomEvent('saqi:langchange', { detail: { code } }));
 
   document.cookie = `googtrans=/en/${code};path=/`;
   document.cookie = `googtrans=/en/${code};path=/;domain=${location.hostname}`;
@@ -598,7 +642,7 @@ function updateScrollMotion() {
 function refreshReveals(resetTab = false) {
   const targets = $$('section.tab.active :is(.card, .preview-card, .day, .kpi > div, .sim-compare, .pillar)');
   if (!targets.length) { updateScrollMotion(); return; }
-  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+  const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || document.documentElement.dataset.calmBg === '1';
   const vh = window.innerHeight || 900;
 
   targets.forEach((el, idx) => {
@@ -613,9 +657,8 @@ function refreshReveals(resetTab = false) {
 
     const r = el.getBoundingClientRect();
     if (r.top < vh * 0.96) {
-      if (!el.classList.contains('in-view')) {
-        requestAnimationFrame(() => el.classList.add('in-view'));
-      }
+      // Mark visible / above-fold elements immediately so tab switches never appear blank
+      el.classList.add('in-view');
       revealObserver.unobserve(el);
     } else if (!el.classList.contains('in-view')) {
       revealObserver.observe(el);
@@ -641,6 +684,18 @@ function initScrollMotion() {
 
 async function init() {
   applyTheme(localStorage.getItem(THEME_KEY) || 'light');
+  const calmCb = $('#calmBgToggle');
+  const savedCalm = localStorage.getItem('saqi-calm-bg') === '1';
+  if (savedCalm) document.documentElement.dataset.calmBg = '1';
+  if (calmCb) {
+    calmCb.checked = savedCalm;
+    calmCb.onchange = () => {
+      const on = calmCb.checked;
+      document.documentElement.dataset.calmBg = on ? '1' : '0';
+      try { localStorage.setItem('saqi-calm-bg', on ? '1' : '0'); } catch (e) { }
+      refreshReveals(false);
+    };
+  }
   initScrollMotion();
   initTranslatorUI();
   $('#themeToggle').onclick = () => {
@@ -651,9 +706,67 @@ async function init() {
 
   const toolsMenu = $('#toolsMenu'), toolsBtn = $('#toolsBtn');
   const setMenu = open => { toolsMenu.hidden = !open; toolsBtn.setAttribute('aria-expanded', open ? 'true' : 'false'); };
-  toolsBtn.onclick = e => { e.stopPropagation(); setMenu(toolsMenu.hidden); };
-  document.addEventListener('mousedown', e => { if (!$('#toolsWrap').contains(e.target)) setMenu(false); });
-  $$('.main-links [data-tab]').forEach(b => b.onclick = () => { showTab(b.dataset.tab); window.scrollTo({ top: 0, behavior: 'smooth' }); });
+  const mainNav = $('#mainNav'), mobBtn = $('#mobMenuBtn');
+  const drops = $$('.nav-dd').map(dd => ({ dd, btn: dd.querySelector('.nav-drop-btn'), menu: dd.querySelector('.nav-menu') }));
+  const setDrop = (item, open) => {
+    if (!item?.btn || !item?.menu) return;
+    item.menu.hidden = !open;
+    item.btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+  const closeDrops = (except = null) => drops.forEach(d => { if (d.dd !== except) setDrop(d, false); });
+  const setMob = open => {
+    if (!mainNav || !mobBtn) return;
+    mainNav.classList.toggle('is-open', open);
+    mobBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) drops.forEach(d => setDrop(d, Boolean(d.menu?.querySelector('[data-tab].active'))));
+    else closeDrops();
+  };
+
+  toolsBtn.onclick = e => { e.stopPropagation(); closeDrops(); setMob(false); setMenu(toolsMenu.hidden); };
+  mobBtn?.addEventListener('click', e => { e.stopPropagation(); setMenu(false); setMob(!mainNav.classList.contains('is-open')); });
+
+  drops.forEach(d => {
+    const items = () => [...d.menu.querySelectorAll('[role="menuitem"]')];
+    d.btn.onclick = e => {
+      e.stopPropagation();
+      setMenu(false);
+      const willOpen = d.menu.hidden;
+      if (window.innerWidth > 960) closeDrops(d.dd);
+      setDrop(d, willOpen);
+    };
+    d.btn.onkeydown = e => {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault(); closeDrops(d.dd); setDrop(d, true);
+        const list = items();
+        (e.key === 'ArrowDown' ? list[0] : list[list.length - 1])?.focus();
+      } else if (e.key === 'Escape') { setDrop(d, false); }
+    };
+    d.menu.onkeydown = e => {
+      const list = items(), i = list.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') { e.preventDefault(); list[(i + 1) % list.length]?.focus(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); list[(i - 1 + list.length) % list.length]?.focus(); }
+      else if (e.key === 'Home') { e.preventDefault(); list[0]?.focus(); }
+      else if (e.key === 'End') { e.preventDefault(); list[list.length - 1]?.focus(); }
+      else if (e.key === 'Escape') { e.preventDefault(); setDrop(d, false); d.btn.focus(); }
+    };
+    d.dd.addEventListener('focusout', e => {
+      if (window.innerWidth > 960 && !d.dd.contains(e.relatedTarget)) setDrop(d, false);
+    });
+  });
+
+  document.addEventListener('pointerdown', e => {
+    if (!$('#toolsWrap').contains(e.target)) setMenu(false);
+    if (!mainNav?.contains(e.target) && e.target !== mobBtn && !mobBtn?.contains(e.target)) {
+      closeDrops(); setMob(false);
+    }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && mainNav?.classList.contains('is-open')) { setMob(false); mobBtn?.focus(); }
+  });
+  $$('.main-links [data-tab]').forEach(b => b.onclick = () => {
+    showTab(b.dataset.tab); closeDrops(); setMob(false);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
 
   $$('[data-anchor]').forEach(a => a.onclick = e => {
     e.preventDefault();

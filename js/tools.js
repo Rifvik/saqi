@@ -41,13 +41,15 @@ function renderBlend() {
   const r = results[s.block];
   if (!r) { $('#blendOut').innerHTML = '<p class="muted">Add a block first.</p>'; return; }
   const rev = weeklyRevenue(r.crop, r.b.area, 1);
-  const o = Engine.optimiseBlend({ netMm: r.today.netNeed, area: r.b.area, Ea: r.today.Ea, crop: r.crop, A: s.a, B: s.b, dailyRevenue: rev });
+  const drainage = state.drainage || 'good';
+  const o = Engine.optimiseBlend({ netMm: r.today.netNeed, area: r.b.area, Ea: r.today.Ea, crop: r.crop, A: s.a, B: s.b, dailyRevenue: rev, drainage });
   const b = o.best;
-  const rowOf = (label, p, hl) => `<tr class="${hl ? 'hl' : ''}"><td>${label}</td><td class="num">${fmt(p.ecw, 1)}</td><td class="num">${fmt(p.V, 1)}</td><td class="num">${fmt(p.cost)}</td><td class="num">${pct(p.y)}</td><td class="num"><b>${fmt(p.profit)}</b></td><td>${p.feasible ? '' : '<span class="tag red">well too small</span>'}</td></tr>`;
+  const rowOf = (label, p, hl) => `<tr class="${hl ? 'hl' : ''}"><td>${label}</td><td class="num">${fmt(p.ecw, 1)}</td><td class="num">${fmt(p.V, 1)}</td><td class="num">${fmt(p.cost)}</td><td class="num">${pct(p.y)}</td><td class="num"><b>${fmt(p.profit)}</b></td><td>${p.feasible ? (p.capped ? '<span class="tag amber">drain cap</span>' : '') : '<span class="tag red">well too small</span>'}</td></tr>`;
   const firstInfeasible = o.curve.find(p => !p.feasible);
   $('#blendOut').innerHTML = `<h3>Best mix for today</h3>
     <div class="verdict">${pct(1 - b.f)} ${esc(s.a.name)} + ${pct(b.f)} ${esc(s.b.name)}</div>
     <div>${fmt(b.vA, 1)} m³ of A + ${fmt(b.vB, 1)} m³ of B → mixed EC <b>${fmt(b.ecw, 1)} dS/m</b>, salt flush ${pct(b.LR)}, expected yield ${pct(b.y)}.</div>
+    ${b.capped ? `<div class="alert amber" style="margin-top:.55rem"><b>Drainage ceiling reached (${drainage}, max LF ${pct(o.drainCap)}):</b> blending more salty water increases root-zone ECe rather than flushing safely.</div>` : ''}
     <div class="tablewrap" style="margin:.6rem 0"><table><tr><th>Option</th><th class="num">EC</th><th class="num">m³/day</th><th class="num">Water AED</th><th class="num">Yield</th><th class="num">Profit AED/day</th><th></th></tr>
     ${rowOf('Only ' + esc(s.a.name), o.freshOnly)}${rowOf('Only ' + esc(s.b.name), o.wellOnly)}${rowOf('<b>Saqi mix</b>', b, true)}</table></div>
     <p>Compared with fresh water only: <b class="good">${fmt(b.profit - o.freshOnly.profit)} AED/day</b> (≈ ${fmt((b.profit - o.freshOnly.profit) * 30)} AED/month) and <b>${fmt(o.freshOnly.vA - b.vA, 1)} m³/day</b> less desalinated water.</p>
@@ -96,7 +98,7 @@ function renderDrip() {
       <line x1="8" x2="${w - 8}" y1="${Y(1)}" y2="${Y(1)}" stroke="var(--good)" stroke-dasharray="3 3"/>
       <polyline fill="none" stroke="${f.status === 'ok' ? 'var(--water)' : 'var(--destructive)'}" stroke-width="2.2" points="${ratios.map((v, j) => X(j) + ',' + Y(v)).join(' ')}"/>
       ${ratios.map((v, j) => `<circle cx="${X(j)}" cy="${Y(v)}" r="2.5" fill="${v < 0.88 || v > 1.12 ? 'var(--destructive)' : 'var(--water)'}"/>`).join('')}</svg>`;
-    const r = results[i]; const mins = r ? r.today.minutes : b.habitMin;
+    const r = results[i]; const mins = (r && r.today.minutes != null) ? r.today.minutes : b.habitMin;
     let msg = '<span class="tag green">Healthy</span> Flow within ±12% of design.';
     if (f.status === 'clog') msg = `<span class="tag red">Clogging</span> Delivering ${pct(f.ratio)} of design flow, so plants get ≈ <b>${fmt((1 - f.ratio) * (r ? r.today.m3 : 0), 1)} m³ less</b> than planned today. Flush the laterals and acid-clean the emitters (salt and lime scale). Do <b>not</b> just run longer: the blocked drippers stay dry while the open ones get too much.`;
     if (f.status === 'leak') msg = `<span class="tag red">Leak / burst</span> Flow is ${pct(f.ratio)} of design: ≈ <b>${fmt((f.ratio - 1) * flow * mins / 60, 1)} m³ lost</b> per irrigation. Walk the line and look for a burst lateral, a missing end cap or a broken fitting.`;
@@ -543,8 +545,9 @@ function initTools() {
     const areaHa = +st.areaHa.toFixed(2);
     const target = $('#applyBlockSel').value;
     if (target === 'new') {
-      state.blocks.push({ name: `Mapped plot (${areaHa} ha)`, crop: 'date', area: areaHa, planted: isoDaysAgo(0), system: 'drip', flow: Math.max(4, +(areaHa * 20).toFixed(1)), habitMin: 180 });
-      state.flowLog.push(Array.from({ length: 14 }, (_, d) => ({ date: isoDaysAgo(13 - d), flow: Math.max(4, +(areaHa * 20).toFixed(1)) })));
+      const defFlow = Math.max(4, +(areaHa * 20).toFixed(1));
+      state.blocks.push({ name: `Mapped plot (${areaHa} ha)`, crop: 'date', area: areaHa, planted: isoDaysAgo(0), system: 'drip', flowMode: 'direct', emitterLph: 4, emitterCount: Math.round(defFlow * 250), flow: defFlow, habitMin: 180 });
+      state.flowLog.push(Array.from({ length: 14 }, (_, d) => ({ date: isoDaysAgo(13 - d), flow: defFlow })));
     } else {
       const b = state.blocks[+target];
       if (b) b.area = areaHa;

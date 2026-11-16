@@ -204,27 +204,33 @@
   window.addEventListener('resize', resize);
   resize();
 
-  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const start = performance.now();
+  const reduceQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+  const isReduced = () => Boolean(reduceQuery?.matches || document.documentElement.dataset.calmBg === '1');
+  let start = performance.now();
+  let hiddenAt = null;
+  let rafId = null;
   let scrollVal = 0;
 
   function lerpArr(a, b, t) { for (let i = 0; i < 3; i++) a[i] += (b[i] - a[i]) * t; }
 
   function frame(now) {
+    rafId = null;
+    if (document.visibilityState === 'hidden') return;
+    const reduced = isReduced();
     const tgt = PALETTES[targetMode];
-    cur.light += (tgt.light - cur.light) * 0.08;
-    lerpArr(cur.base, tgt.base, 0.08);
-    lerpArr(cur.bg1, tgt.bg1, 0.08);
-    lerpArr(cur.bg2, tgt.bg2, 0.08);
-    lerpArr(cur.l1, tgt.l1, 0.08);
-    lerpArr(cur.l2, tgt.l2, 0.08);
+    cur.light += (tgt.light - cur.light) * (reduced ? 1 : 0.08);
+    lerpArr(cur.base, tgt.base, reduced ? 1 : 0.08);
+    lerpArr(cur.bg1, tgt.bg1, reduced ? 1 : 0.08);
+    lerpArr(cur.bg2, tgt.bg2, reduced ? 1 : 0.08);
+    lerpArr(cur.l1, tgt.l1, reduced ? 1 : 0.08);
+    lerpArr(cur.l2, tgt.l2, reduced ? 1 : 0.08);
 
     const targetScroll = (window.scrollY || 0) / Math.max(window.innerHeight, 600);
-    scrollVal += (targetScroll - scrollVal) * 0.1;
+    scrollVal += (targetScroll - scrollVal) * (reduced ? 1 : 0.1);
 
     gl.useProgram(prog);
     gl.uniform2f(loc.res, canvas.width, canvas.height);
-    gl.uniform1f(loc.time, reduceMotion ? 4.2 : (now - start) / 1000);
+    gl.uniform1f(loc.time, reduced ? 4.2 : (now - start) / 1000);
     gl.uniform1f(loc.scroll, scrollVal);
     gl.uniform1f(loc.light, cur.light);
     gl.uniform3fv(loc.base, cur.base);
@@ -238,13 +244,23 @@
     gl.enableVertexAttribArray(aPos);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
-    if (!reduceMotion || Math.abs(tgt.light - cur.light) > 0.005) {
-      requestAnimationFrame(frame);
+    if (!reduced || Math.abs(tgt.light - cur.light) > 0.005) {
+      rafId = requestAnimationFrame(frame);
     }
   }
 
-  requestAnimationFrame(frame);
-  if (reduceMotion) {
-    new MutationObserver(() => requestAnimationFrame(frame)).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  function kick() {
+    if (rafId == null && document.visibilityState !== 'hidden') rafId = requestAnimationFrame(frame);
   }
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+      hiddenAt = performance.now();
+      if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
+    } else {
+      if (hiddenAt != null) { start += performance.now() - hiddenAt; hiddenAt = null; }
+      kick();
+    }
+  });
+  new MutationObserver(() => kick()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'data-calm-bg'] });
+  kick();
 })();

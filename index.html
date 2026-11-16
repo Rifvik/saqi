@@ -25,17 +25,61 @@
       <span class="brand-word notranslate">saqi<span>.</span></span>
     </a>
 
-    <nav class="main-links" aria-label="Farm tools">
-      <button type="button" data-tab="today">Today</button>
-      <button type="button" data-tab="farm">My farm</button>
-      <button type="button" data-tab="blend">Water mix</button>
-      <button type="button" data-tab="sensor">Sensors</button>
-      <button type="button" data-tab="drip">Drip health</button>
-      <button type="button" data-tab="planner">Plant</button>
-      <button type="button" data-tab="harvest">Harvest</button>
-      <button type="button" data-tab="share">Sharing</button>
-      <button type="button" data-tab="adviser">Adviser</button>
-      <button type="button" data-tab="about">Why Saqi</button>
+    <nav class="main-links" id="mainNav" aria-label="Primary navigation">
+      <button type="button" class="nav-link" data-tab="today">Today</button>
+
+      <div class="nav-dd" id="navFarmDrop">
+        <button type="button" class="nav-link nav-drop-btn" id="navFarmBtn" aria-expanded="false" aria-haspopup="menu" aria-controls="navFarmMenu">
+          <span>My Farm</span>
+          <svg class="chev" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.3" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-menu" id="navFarmMenu" role="menu" aria-labelledby="navFarmBtn" hidden>
+          <button type="button" role="menuitem" data-tab="farm">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+            <span>My Farm</span>
+          </button>
+          <button type="button" role="menuitem" data-tab="sensor">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 4v10.54a4 4 0 1 1-4 0V4a2 2 0 0 1 4 0Z"/><path d="M12 14v-4"/></svg>
+            <span>Sensors</span>
+          </button>
+          <button type="button" role="menuitem" data-tab="drip">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg>
+            <span>Drip Health</span>
+          </button>
+          <button type="button" role="menuitem" data-tab="planner">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M7 20h10"/><path d="M10 20c5.5-2.5.8-6.4 3-10"/><path d="M9.5 9.4c1.1.8 1.8 2.2 2.3 3.7-2 .4-3.5.4-4.8-.3-1.2-.6-2.3-1.9-3-4.2 2.8-.5 4.4 0 5.5.8z"/><path d="M14.1 6a7 7 0 0 0-1.1 4c1.9-.1 3.3-.6 4.3-1.4 1-1 1.6-2.3 1.7-4.6-2.7.1-4 1-4.9 2z"/></svg>
+            <span>Plant</span>
+          </button>
+          <button type="button" role="menuitem" data-tab="harvest">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+            <span>Harvest</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="nav-dd" id="navToolsDrop">
+        <button type="button" class="nav-link nav-drop-btn" id="navToolsBtn" aria-expanded="false" aria-haspopup="menu" aria-controls="navToolsMenu">
+          <span>Tools</span>
+          <svg class="chev" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.3" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="nav-menu" id="navToolsMenu" role="menu" aria-labelledby="navToolsBtn" hidden>
+          <button type="button" role="menuitem" data-tab="blend">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 2v7.31"/><path d="M14 9.3V1.99"/><path d="M8.5 2h7"/><path d="M14 9.3a6.5 6.5 0 1 1-4 0"/><path d="M5.52 16h12.96"/></svg>
+            <span>Water Mix</span>
+          </button>
+          <button type="button" role="menuitem" data-tab="share">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            <span>Sharing</span>
+          </button>
+          <button type="button" role="menuitem" data-tab="about">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            <span>Why Saqi</span>
+          </button>
+        </div>
+      </div>
+
+      <button type="button" class="nav-link" data-tab="adviser">Adviser</button>
+      <button type="button" class="nav-link nav-ai-link" data-tab="assistant">✨ Saqi AI</button>
     </nav>
 
     <div class="header-actions">
@@ -58,6 +102,10 @@
               <span class="muted">Connection</span>
               <span id="netPill" class="pill">…</span>
             </div>
+            <label class="row" style="justify-content:space-between;margin-top:.3rem;font-size:.76rem;cursor:pointer">
+              <span class="muted">Calm / battery-saver bg</span>
+              <input type="checkbox" id="calmBgToggle">
+            </label>
           </div>
         </div>
       </div>
@@ -79,6 +127,10 @@
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10Z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
         <span>Live demo</span>
       </a>
+      <button type="button" id="mobMenuBtn" class="mob-menu-btn" aria-expanded="false" aria-controls="mainNav" aria-label="Open navigation menu">
+        <svg class="ic-burger" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+        <svg class="ic-close" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
     </div>
   </div>
 </header>
@@ -100,7 +152,7 @@
         <div class="hero-checks">
           <span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg>2-minute decisions</span>
           <span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg>SMS-ready</span>
-          <span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg>Works offline</span>
+          <span><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg>Cached offline math</span>
         </div>
       </div>
 
@@ -108,23 +160,23 @@
         <div class="preview-card">
           <div class="preview-head">
             <div>
-              <div class="preview-title"><span class="dot"></span>Live water preview</div>
-              <p class="muted" style="margin:.2rem 0 0;font-size:.76rem">Zone A · 2 ha date palms · Drip</p>
+              <div class="preview-title"><span class="dot"></span>Live water preview (FAO engine)</div>
+              <p class="muted" style="margin:.2rem 0 0;font-size:.76rem">Zone A · 2 ha date palms · Drip · 40 m³/h</p>
             </div>
             <span class="icon-box sage"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16.3c2.2 0 4-1.83 4-4.05 0-1.16-.57-2.26-1.71-3.19S7.29 6.75 7 5.3c-.29 1.45-1.14 2.84-2.29 3.76S3 11.1 3 12.25c0 2.22 1.8 4.05 4 4.05z"/><path d="M12.56 6.6A10.97 10.97 0 0 0 14 3.02c.5 2.5 2 4.9 4 6.5s3 3.5 3 5.5a6.98 6.98 0 0 1-11.91 4.97"/></svg></span>
           </div>
           <div class="preview-body">
-            <p class="muted" style="margin:0;font-weight:500">Water saved with this decision</p>
-            <div class="preview-big"><span id="hpSavedLitres">10,000</span><small>litres</small></div>
-            <div class="preview-badge" id="hpSavedBadge">50% less than habit</div>
+            <p class="muted" id="hpSavedLabel" style="margin:0;font-weight:500">Water saved vs. 240-min fixed habit</p>
+            <div class="preview-big"><span id="hpSavedLitres">54,859</span><small>litres</small></div>
+            <div class="preview-badge" id="hpSavedBadge">34% less than habit</div>
             <div class="preview-bars">
               <div>
-                <div class="bar-label"><span class="muted">Traditional habit</span><span class="mono" id="hpTradL">20,000 L</span></div>
-                <div class="bar-track"><div class="bar-fill muted-fill" style="width:100%"></div></div>
+                <div class="bar-label"><span class="muted">Traditional 240-min habit</span><span class="mono" id="hpTradL">160,000 L</span></div>
+                <div class="bar-track"><div class="bar-fill muted-fill" id="hpTradBar" style="width:100%"></div></div>
               </div>
               <div>
-                <div class="bar-label"><span class="primary-txt">Saqi decision</span><span class="mono primary-txt" id="hpSmartL">10,000 L</span></div>
-                <div class="bar-track"><div class="bar-fill primary-fill" id="hpSmartBar" style="width:50%"></div></div>
+                <div class="bar-label"><span class="primary-txt">Saqi decision</span><span class="mono primary-txt" id="hpSmartL">105,141 L</span></div>
+                <div class="bar-track"><div class="bar-fill primary-fill" id="hpSmartBar" style="width:66%"></div></div>
               </div>
             </div>
           </div>
@@ -172,11 +224,11 @@
           <span class="icon-box inv"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 18c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg></span>
           <span class="live-pill">LIVE RESULT</span>
         </div>
-        <h3>Water saved vs. guesswork</h3>
-        <p class="inv-muted">A fixed 30-minute habit uses 20,000 litres. Your current smart decision uses only what the conditions call for.</p>
+        <h3 id="resTitle">Water saved vs. guesswork</h3>
+        <p class="inv-muted" id="resSub">A fixed 240-min summer habit uses 160,000 L on 2 ha. Saqi uses only what ET₀ and salinity call for.</p>
         <div class="pillar-stats inv-border">
-          <div><div class="stat-num" style="font-size:2.1rem" id="resSavedPct">50%</div><div class="inv-muted" style="font-size:.75rem">water saved</div></div>
-          <div style="text-align:right"><div class="stat-num" style="font-size:1.45rem" id="resSavedL">10,000 L</div><div class="inv-muted" style="font-size:.75rem">this irrigation</div></div>
+          <div><div class="stat-num" style="font-size:2.1rem" id="resSavedPct">34%</div><div class="inv-muted" id="resPctLabel" style="font-size:.75rem">water saved</div></div>
+          <div style="text-align:right"><div class="stat-num" style="font-size:1.45rem" id="resSavedL">54,859 L</div><div class="inv-muted" id="resVolLabel" style="font-size:.75rem">saved today</div></div>
         </div>
       </article>
     </div>
@@ -192,7 +244,7 @@
     <div class="scenario-pills glass" role="group" aria-label="Desert scenarios" id="simScenarios">
       <button type="button" data-sim="normal" class="active">Normal Day</button>
       <button type="button" data-sim="heatwave">48°C Heatwave</button>
-      <button type="button" data-sim="salinity">High Soil Salinity Spike</button>
+      <button type="button" data-sim="salinity">High Water Salinity (6.5 dS/m)</button>
     </div>
 
     <div class="sim-grid">
@@ -203,23 +255,23 @@
         </div>
         <div class="slider-list">
           <label class="slider-box">
-            <span class="slider-head"><span>Temperature</span><span class="mono" id="valTemp">42°C</span></span>
-            <input type="range" min="25" max="55" step="1" value="42" class="simulator-range" id="slTemp" aria-label="Temperature">
+            <span class="slider-head"><span>Air temperature</span><span class="mono" id="valTemp">34°C</span></span>
+            <input type="range" min="25" max="55" step="1" value="34" class="simulator-range" id="slTemp" aria-label="Temperature">
             <span class="slider-bounds"><span>25°C</span><span>55°C</span></span>
           </label>
           <label class="slider-box">
-            <span class="slider-head"><span>Soil salinity</span><span class="mono" id="valSal">4.8 dS/m</span></span>
-            <input type="range" min="0.5" max="15" step="0.1" value="4.8" class="simulator-range" id="slSal" aria-label="Soil salinity">
-            <span class="slider-bounds"><span>0.5 dS/m</span><span>15 dS/m</span></span>
+            <span class="slider-head"><span>Water salinity (ECw)</span><span class="mono" id="valSal">3.0 dS/m</span></span>
+            <input type="range" min="0.5" max="10" step="0.1" value="3.0" class="simulator-range" id="slSal" aria-label="Water salinity ECw">
+            <span class="slider-bounds"><span>0.5 dS/m</span><span>10 dS/m</span></span>
           </label>
           <label class="slider-box">
-            <span class="slider-head"><span>Soil moisture</span><span class="mono" id="valMoist">26%</span></span>
-            <input type="range" min="5" max="45" step="1" value="26" class="simulator-range" id="slMoist" aria-label="Soil moisture">
+            <span class="slider-head"><span>Soil moisture</span><span class="mono" id="valMoist">10%</span></span>
+            <input type="range" min="5" max="45" step="1" value="10" class="simulator-range" id="slMoist" aria-label="Soil moisture">
             <span class="slider-bounds"><span>5%</span><span>45%</span></span>
           </label>
           <label class="slider-box">
-            <span class="slider-head"><span>Humidity</span><span class="mono" id="valHum">32%</span></span>
-            <input type="range" min="5" max="80" step="1" value="32" class="simulator-range" id="slHum" aria-label="Humidity">
+            <span class="slider-head"><span>Humidity</span><span class="mono" id="valHum">35%</span></span>
+            <input type="range" min="5" max="80" step="1" value="35" class="simulator-range" id="slHum" aria-label="Humidity">
             <span class="slider-bounds"><span>5%</span><span>80%</span></span>
           </label>
         </div>
@@ -228,14 +280,14 @@
       <div class="card sim-action">
         <div class="row" style="justify-content:space-between">
           <span class="tag green">NEXT BEST ACTION</span>
-          <span class="mono muted" style="font-size:.75rem">ZONE A</span>
+          <span class="mono muted" style="font-size:.75rem">ZONE A · FAO ENGINE</span>
         </div>
-        <h3 class="action-headline">Irrigate for <span class="primary-txt" id="simMins">15 mins</span><br>at 4:30 AM.</h3>
-        <div class="flush-pill" id="simFlush"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg><span>Add 7% salt-leaching flush</span></div>
-        <p class="muted" id="simReason" style="margin-top:1.2rem;font-size:.94rem">Current moisture and the heat set the base run time. The extra flush moves salt below the root zone instead of letting it build up.</p>
+        <h3 class="action-headline">Irrigate for <span class="primary-txt" id="simMins">160 mins</span><br>after 21:00.</h3>
+        <div class="flush-pill" id="simFlush"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6c.6.5 1.2 1 2.5 1C7 7 7 5 9.5 5c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/><path d="M2 12c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/></svg><span>Add +21% salt-leaching flush</span></div>
+        <p class="muted" id="simReason" style="margin-top:1.2rem;font-size:.94rem">FAO-56 ET₀ × Date palm Kc with FAO-29 salt flush.</p>
         <div class="action-meta">
-          <span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span id="simRisk">Low crop stress risk</span></span>
-          <span class="mono"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg><span id="simLitres">10,000 litres total</span></span>
+          <span><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg><span id="simRisk">Low stress risk</span></span>
+          <span class="mono"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg><span id="simLitres">105,141 L today</span></span>
         </div>
         <div class="row" style="margin-top:1.6rem">
           <button type="button" class="btn-solid" id="simCopy"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Copy instruction</button>
@@ -246,32 +298,34 @@
 
     <div class="card sim-compare">
       <div class="sim-compare-head">
-        <div><p class="section-kicker" style="margin:0">Traditional habit vs. smart decision</p><h3 style="margin:.2rem 0 0">Same crop. A clearer outcome.</h3></div>
-        <span class="muted" style="font-size:.78rem">Per irrigation · Zone A</span>
+        <div><p class="section-kicker" style="margin:0">Habit vs. Weather-Only vs. Saqi</p><h3 style="margin:.2rem 0 0">Same 2 ha block. A clearer outcome.</h3></div>
+        <span class="muted" style="font-size:.78rem">Per day · Zone A (40 m³/h)</span>
       </div>
       <div class="sim-compare-cols">
         <div class="cmp-col">
-          <p class="muted" style="font-weight:600;margin:0">Water used</p>
-          <div class="cmp-pair">
-            <div><div class="cmp-val mono" id="cmpTradL">20,000 L</div><p class="muted">Traditional</p></div>
-            <div><div class="cmp-val mono primary-txt" id="cmpSmartL">10,000 L</div><p class="muted">Saqi</p></div>
+          <p class="muted" style="font-weight:600;margin:0">Water applied today</p>
+          <div class="cmp-pair" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:.55rem">
+            <div><div class="cmp-val mono" style="font-size:1.1rem" id="cmpTradL">160,000 L</div><p class="muted" style="font-size:.74rem">Habit</p></div>
+            <div><div class="cmp-val mono" style="font-size:1.1rem;color:var(--warn)" id="cmpWxL">86,587 L</div><p class="muted" style="font-size:.74rem">Wx-only</p></div>
+            <div><div class="cmp-val mono primary-txt" style="font-size:1.1rem" id="cmpSmartL">105,141 L</div><p class="muted" style="font-size:.74rem">Saqi</p></div>
           </div>
         </div>
         <div class="cmp-col">
-          <p class="muted" style="font-weight:600;margin:0">Crop stress risk</p>
-          <div class="cmp-pair">
-            <div><div class="cmp-val mono" style="color:var(--accent-fg)" id="cmpTradRisk">Moderate</div><p class="muted">Traditional</p></div>
-            <div><div class="cmp-val mono primary-txt" id="cmpSmartRisk">Low</div><p class="muted">Saqi</p></div>
+          <p class="muted" style="font-weight:600;margin:0">Crop risk (est. yield)</p>
+          <div class="cmp-pair" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:.55rem">
+            <div><div class="cmp-val mono" style="font-size:.95rem;color:var(--accent-fg)" id="cmpTradRisk">Waste</div><p class="muted" style="font-size:.74rem">Habit</p></div>
+            <div><div class="cmp-val mono" style="font-size:.95rem;color:var(--destructive)" id="cmpWxRisk">High (4%)</div><p class="muted" style="font-size:.74rem">Wx-only</p></div>
+            <div><div class="cmp-val mono primary-txt" style="font-size:.95rem" id="cmpSmartRisk">Low (100%)</div><p class="muted" style="font-size:.74rem">Saqi</p></div>
           </div>
         </div>
         <div class="cmp-col cmp-highlight">
-          <p class="primary-txt" style="font-weight:600;margin:0">Water saved</p>
-          <div class="cmp-big mono primary-txt" id="cmpSavedPct">50%</div>
-          <p class="primary-txt" style="opacity:.8;margin:.4rem 0 0;font-size:.86rem"><span id="cmpSavedL">10,000</span> litres stay available for your farm.</p>
+          <p class="primary-txt" id="cmpSavedTitle" style="font-weight:600;margin:0">Water saved vs. habit</p>
+          <div class="cmp-big mono primary-txt" id="cmpSavedPct">34%</div>
+          <p class="primary-txt" id="cmpSavedNote" style="opacity:.85;margin:.4rem 0 0;font-size:.86rem"><span id="cmpSavedL">54,859</span> litres stay available vs. habit.</p>
         </div>
       </div>
     </div>
-    <p class="muted" style="text-align:center;font-size:.78rem;margin-top:1rem">Illustrative demo for a 2 ha drip-irrigated date palm block with a 40 m³/h flow rate. Use your field measurements for real irrigation decisions.</p>
+    <p class="muted" style="text-align:center;font-size:.78rem;margin-top:1rem">Powered by the same FAO-56 Hargreaves + FAO-29 Rhoades model as Tonight's Plan (Zone A · 2 ha drip date palms · 40 m³/h · 240-min fixed habit = 160,000 L).</p>
   </div>
 </section>
 
@@ -442,6 +496,7 @@
       <div class="field"><label>Soil salinity ECe (dS/m), from an EC probe or soil test</label><input type="number" step="0.1" data-bind="sensor.ece"></div>
       <div class="field"><label>Root depth (cm)</label><input type="number" step="5" data-bind="sensor.depth"></div>
       <div class="field"><label>Salt correction factor k (default 0.35)</label><input type="number" step="0.01" data-bind="sensor.k"></div>
+      <label class="row" style="margin:.4rem 0 .7rem;cursor:pointer"><input type="checkbox" data-bind="sensor.useForFlush"><span>Factor measured soil ECe into Tonight's salt-leaching flush (capped by drainage)</span></label>
       <details><summary class="muted">Calibrate k with one soil sample (more accurate)</summary>
         <p class="muted">Weigh a soil sample, oven-dry it, weigh it again to get the true water %. Enter it with the sensor reading at that moment.</p>
         <div class="grid g3">
@@ -574,7 +629,7 @@
         <span class="live-pill">BUILT FOR THE DESERT</span>
       </div>
       <h3>Zero-Hardware Start</h3>
-      <p class="inv-muted" style="margin:0">Built for <b>0.5–20 ha farms</b> across the UAE, Oman &amp; Saudi Arabia. Works offline on any phone for <b>0 AED</b>.</p>
+      <p class="inv-muted" style="margin:0">Built for <b>0.5–20 ha farms</b> across the UAE, Oman &amp; Saudi Arabia. Runs on any phone for <b>0 AED</b> with cached forecasts &amp; offline crop math.</p>
       <div class="pillar-stats inv-border">
         <div><div class="stat-num">0 AED</div><div class="inv-muted" style="font-size:.74rem">Phone-only start</div></div>
         <div><div class="stat-num">~55 AED</div><div class="inv-muted" style="font-size:.74rem">Optional EC pen + sensor</div></div>
@@ -608,8 +663,60 @@
     </div>
   </div>
 </section>
+
+<!-- AI ASSISTANT & REPORT -->
+<section class="tab" id="assistant">
+  <div class="today-head">
+    <div>
+      <p class="section-kicker">Gemini-powered advisory</p>
+      <h2>Saqi AI Assistant &amp; Farm Report</h2>
+      <p class="lead">Ask practical irrigation questions grounded in your farm's live FAO-56 / FAO-29 calculations, or generate a personalised report in your chosen language.</p>
+    </div>
+    <div class="today-actions">
+      <span id="aiStatusPill" class="pill">Checking AI…</span>
+    </div>
+  </div>
+  <div id="aiSetupNote" class="alert amber" hidden></div>
+  <div id="aiCtxBar" class="conf-bar" style="margin-bottom:.9rem"></div>
+
+  <div class="card ai-chat-card">
+    <div class="row" style="justify-content:space-between;align-items:flex-start;margin-bottom:.65rem">
+      <div>
+        <h3 style="margin:0">Ask Saqi AI about your farm</h3>
+        <p class="muted" id="aiLangNote" style="margin:.2rem 0 0;font-size:.8rem">Replies match the language selected in Translate.</p>
+      </div>
+      <button type="button" class="btn sm ghost" id="aiClear">Clear chat</button>
+    </div>
+    <div class="ai-suggest" id="aiSuggest" aria-label="Suggested farm questions"></div>
+    <div class="ai-messages" id="aiMessages" role="log" aria-live="polite"></div>
+    <form class="ai-form" id="aiForm">
+      <textarea id="aiInput" rows="2" maxlength="2000" placeholder="Ask about irrigation timing, salt flush, drainage, drip clogs, heatwaves, or crop choices…" aria-label="Ask Saqi AI a farming question"></textarea>
+      <button type="submit" class="btn-solid" id="aiSend">Send</button>
+    </form>
+  </div>
+
+  <div class="card" id="aiReportCard">
+    <div class="row" style="justify-content:space-between;align-items:flex-start;gap:.75rem;margin-bottom:.75rem">
+      <div>
+        <h3 style="margin:0">AI Farm Report</h3>
+        <p class="muted" style="margin:.2rem 0 0;font-size:.84rem">Creates a printable farm summary combining Saqi's exact valve schedules, salinity analysis, risks, and prioritised recommendations.</p>
+      </div>
+      <div class="row">
+        <button type="button" class="btn-solid" id="aiReportBtn">✨ Generate AI Report</button>
+        <button type="button" class="btn sm alt" id="aiPdfBtn" disabled>⬇ Download PDF</button>
+        <button type="button" class="btn sm ghost" id="aiPrintBtn" disabled>Print / Save PDF</button>
+      </div>
+    </div>
+    <div id="aiReportStatus" class="muted" style="margin-bottom:.7rem;font-size:.85rem"></div>
+    <div id="aiReportOut"></div>
+  </div>
+</section>
 </main>
 <div class="toast" id="toast"></div>
+<button type="button" id="aiFab" class="ai-fab" aria-label="Open Saqi AI Assistant and Report">
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.1" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  <span>Saqi AI</span>
+</button>
 <footer class="site-footer">
   <div class="footer-inner">
     <div>
@@ -626,6 +733,7 @@
       <a href="#harvest" data-goto="harvest">Date harvest</a>
       <a href="#share" data-goto="share">Water sharing</a>
       <a href="#adviser" data-goto="adviser">Adviser</a>
+      <a href="#assistant" data-goto="assistant">Saqi AI &amp; Report</a>
       <a href="#about" data-goto="about">Why Saqi</a>
     </nav>
   </div>
@@ -636,6 +744,7 @@
 <script src="js/engine.js"></script>
 <script src="js/tools.js"></script>
 <script src="js/app.js"></script>
+<script src="js/ai.js"></script>
 <script src="js/shader-bg.js"></script>
 <script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>
 </body>

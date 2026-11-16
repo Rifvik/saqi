@@ -16,16 +16,18 @@ Most irrigation tools focus only on evaporation. In Gulf desert farms, **two hid
 
 ## 2. Quick Start (Run Locally in 10 Seconds)
 
-No `npm install`, bundler, or database is required.
+With **Python 3.10+** (includes all farm tools **plus** the Gemini-powered **Saqi AI Chatbot & Report Generator**):
 
 ```bash
 git clone https://github.com/Rifvik/saqi.git
 cd saqi
-python -m http.server 8765
+pip install -r requirements.txt
+cp .env.example .env   # then set GEMINI_API_KEY inside .env (never commit .env)
+python server.py
 ```
 
-Open **`http://localhost:8765/index.html`** in your browser.  
-*(Any static file server works—e.g. VS Code Live Server or `npx serve`.)*
+Open **`http://127.0.0.1:8765/index.html`** in your browser.  
+*(Without an API key, all agronomic dashboards continue to run 100% locally; you can also serve static-only tools with `npx --yes serve -l 8765 .` or set `SAQI_AI_MOCK=1` for offline AI UI preview.)*
 
 ---
 
@@ -33,13 +35,19 @@ Open **`http://localhost:8765/index.html`** in your browser.
 
 | File | Role | Key Exports / Responsibilities |
 |---|---|---|
-| [`index.html`](index.html) | Single-page shell & all 11 views | Floating pill header, Homepage Zone-A Simulator (`#home`), 10 farm tool views (`#today`, `#farm`, `#blend`, `#sensor`, `#drip`, `#planner`, `#harvest`, `#share`, `#adviser`, `#about`), Leaflet + Google Translate script tags |
-| [`styles.css`](styles.css) | Complete UI design system | Light & Dark theme CSS variables (`:root` & `html[data-theme="dark"]`), frosted-glass floating header, smooth directional tab animations, responsive grids, interactive slider & map styles |
+| [`index.html`](index.html) | Single-page shell & all views | Floating pill header, Homepage Zone-A Simulator (`#home`), 11 views (`#today`, `#farm`, `#blend`, `#sensor`, `#drip`, `#planner`, `#harvest`, `#share`, `#adviser`, `#assistant`, `#about`), Leaflet + Google Translate script tags |
+| [`styles.css`](styles.css) | Complete UI design system | Light & Dark theme CSS variables (`:root` & `html[data-theme="dark"]`), frosted-glass floating header, smooth directional tab animations, printable/PDF report layout + RTL support |
 | [`js/data.js`](js/data.js) | Reference agronomic tables & localization | `CROPS` (FAO-56 $K_c$, FAO-29 thresholds/slopes, FAO-33 $K_y$), `SYSTEMS`, `LOCATIONS`, `CLIMATE`, `SCENARIOS`, `SOILS`, `DRAINAGE`, `LANGS`, `PHRASES` |
 | [`js/engine.js`](js/engine.js) | Pure math & agronomic engine (no DOM) | `Engine` module: ET₀/Kc, leaching, drainage-bounded root-zone $EC_e$, `blockDecision`, `weatherOnlyDecision`, `evaluate`, `optimiseBlend`, `seasonPlan`, `shareWater`, `flowCheck`, `decideZoneA`, WGS84 geodesic `polygonStats` |
 | [`js/tools.js`](js/tools.js) | Interactive tools, charts, GIS map & public APIs | `renderBlend` + `svgChart`, `renderSensor`, `renderDrip`, `renderPlanner`, `drawSample`/`analyseHarvest`, `renderShare`, `renderAdviser`, `renderFieldMap`, `fetchPublicReadings` |
-| [`js/app.js`](js/app.js) | App state, weather fetching, voice & UI wiring | `localStorage` persistence (`saqi-state-v2`, `saqi-theme-v2`, `saqi-site-lang`), Open-Meteo 7-day forecast + Hargreaves fallback, `computeAll`, `renderToday`, `renderFarm`, `initHomeSim`, `initTranslatorUI`, `speechSynthesis` |
-| [`sw.js`](sw.js) | Service Worker cache | Caches static app files (`saqi-v13`) for resilient reload/offline fallback on `localhost` / HTTPS |
+| [`js/app.js`](js/app.js) | App state, weather fetching, scroll motion & UI wiring | `localStorage` persistence (`saqi-state-v2`, `saqi-theme-v2`, `saqi-site-lang`), Open-Meteo 7-day forecast + Hargreaves fallback, `computeAll`, `renderToday`, `renderFarm`, `initHomeSim`, `initScrollMotion`, `initTranslatorUI`, `speechSynthesis` |
+| [`js/ai.js`](js/ai.js) | AI Chatbot & PDF Report client | Builds verified farm context from live SAQI calculations, manages session chat history, reuses existing selected site language, renders multilingual RTL/LTR report previews, and builds A4 PDF exports (`html2canvas-pro` + `jsPDF`) |
+| [`ai_service.py`](ai_service.py) | Shared Gemini AI service (`google-genai`) | Single shared service powering both `/api/ai/chat` and `/api/ai/report` using `gemini-3.8-flash` (with automatic Flash fallback on transient capacity spikes), server-side `GEMINI_API_KEY`, 44-language support, and fabricated-number grounding validation |
+| [`server.py`](server.py) | Local web server + `/api/ai/*` proxy | Serves static files, loads optional git-ignored `.env`, exposes `/api/ai/status`, `/api/ai/chat`, `/api/ai/report`, blocks `.env`/`.py`/`tests/` downloads, rate-limits requests |
+| [`js/shader-bg.js`](js/shader-bg.js) | Theme-adaptive WebGL background | 16-layer warped plasma wave shader syncing smoothly between Light Alabaster and Dark Obsidian themes |
+| [`sw.js`](sw.js) | Service Worker cache | Caches core app shell files (`saqi-v16`) while bypassing `/api/*` for live AI calls |
+| [`tests/engine.test.js`](tests/engine.test.js) | Automated JS unit tests | Zero-dependency `node:test` suite verifying FAO-29/56 equations, drainage caps, zero-flow guards, blending, and GIS geometry |
+| [`tests/test_ai.py`](tests/test_ai.py) | Automated Python AI & server tests | `unittest` suite testing `SaqiAIService`, Gemini error sanitization, number validation, multilingual/RTL output, and `server.py` security |
 | [`manifest.json`](manifest.json) & [`icon.svg`](icon.svg) | PWA metadata & vector icon | App name, theme colors, droplet emblem |
 
 ---
@@ -47,9 +55,9 @@ Open **`http://localhost:8765/index.html`** in your browser.
 ## 4. Every Page / Module Explained
 
 ### 🏠 Homepage (`#home`)
-- **Hero & Live Water Preview:** Presents the core value proposition with a live preview card tracking **Zone A** (2 ha drip-irrigated date palms, $40\text{ m}^3/\text{h}$ block flow) against a 20,000 L traditional fixed schedule.
-- **3-Card Overview (`#problem`, `#engine`, `#results`):** Summarizes heat + salinity risk, the 3-step *Sense → Decide → Act* loop, and live water savings.
-- **Interactive Field Simulator (`#demo`):** Implemented by `Engine.decideZoneA()` and `initHomeSim()`. Switch between **Normal Day**, **48°C Heatwave**, and **High Soil Salinity Spike** or drag the 4 sliders (**Temperature**, **Soil salinity**, **Soil moisture**, **Humidity**) to watch runtime, salt-leaching flush %, stress risk, and litres saved update live.
+- **Hero & Live Water Preview:** Tracks **Zone A** (2 ha drip-irrigated date palms, $40\text{ m}^3/\text{h}$ block flow, 240-min summer habit $= 160{,}000\text{ L}$) using the **exact same FAO-56 + FAO-29 engine (`Engine.decideZoneA()` → `blockDecision()` + `weatherOnlyDecision()`)** as Tonight's Plan.
+- **3-Card Overview (`#problem`, `#engine`, `#results`):** Summarizes heat + salinity risk, the 3-step *Sense → Decide → Act* loop, and adapts honestly between **water saved** (typical/mild weather) and **crop protection water added** (when fixed habits under-water during heatwaves).
+- **Interactive Field Simulator (`#demo`):** Switch between **Normal Day**, **48°C Heatwave**, and **High Water Salinity (6.5 dS/m)** or drag the 4 sliders (**Air temperature**, **Water salinity $EC_w$**, **Soil moisture**, **Humidity**) to compare **Habit vs. Weather-Only vs. Saqi** side-by-side.
 
 ### 💧 1. Today's Plan (`#today` — `renderToday()` in `js/app.js`)
 - **Data Confidence & Provenance Strip (`#dataConfidence`):** Shows the source, freshness, and uncertainty of every input:
@@ -110,7 +118,11 @@ Open **`http://localhost:8765/index.html`** in your browser.
 - Demonstrates how an agricultural adviser prioritizes 40 regional farms (`Al Ain`, `Liwa`, `Al Dhaid`, `Madinat Zayed`) by weighted risk score:
   - $45\%$ NDVI vigour drop, $25\%$ NDMI water stress, $20\%$ water $EC_w$ vs. crop threshold, $10\%$ days since last visit.
 
-### ℹ️ 10. Why Saqi (`#about`)
+### 🤖 10. Saqi AI Assistant & Farm Report (`#assistant` — `js/ai.js` + `ai_service.py`)
+- **Context-Aware Farming Chatbot:** Uses `google-genai` (`gemini-3.8-flash`) grounded strictly on SAQI's calculated farm context (`location`, `weather`, `water ECw`, `drainage`, `soil probe`, per-valve minutes, volumes, salt flush %, modeled `ECe`, 7-day comparison, drip alerts), maintains session conversation history (`sessionStorage`), provides suggested questions, and automatically responds in whichever of the 44 site languages is active in the top **Translate** selector.
+- **AI Farm Report & Multilingual PDF Export:** Generates a structured, personalized report combining SAQI's verified tables with AI narrative sections (*Farm Overview, Environment, Crop-Wise Irrigation, Salinity Analysis, Water Usage & Savings, Risks & Prevention, Prioritised Recommendations*), with automatic `RTL`/`LTR` support and one-click **Download PDF** (`html2canvas-pro` + `jsPDF`) plus native **Print / Save PDF**.
+
+### ℹ️ 11. Why Saqi (`#about`)
 - Crisp 1-minute pitch summarizing the **Salt Trap**, **Owner ≠ Worker** gap, **Zero-Hardware Start**, **Desert Rules**, and **Real vs. Synthetic Data Transparency**.
 
 ### 🌐 Whole-Website Translator & 🌙 Dark / Light Mode (`js/app.js`)
@@ -154,12 +166,16 @@ Open **`http://localhost:8765/index.html`** in your browser.
 
 ---
 
-## 8. Running Tests
+## 8. Running Tests & Offline Scope
 
-Syntax and unit tests can be run with Node.js:
+Run syntax checks and both the automated Node agronomic engine tests and Python AI/server tests:
 
 ```bash
-node --check js/data.js js/engine.js js/tools.js js/app.js sw.js
+node --check js/data.js js/engine.js js/tools.js js/app.js js/ai.js js/shader-bg.js sw.js
+node --test tests/engine.test.js
+python -m unittest discover -s tests -v
 ```
 
+> **Scope & Offline Behavior:** After first visit, the Service Worker (`sw.js`) caches HTML/CSS/JS core assets and `localStorage` caches forecasts with Hargreaves $\text{ET}_0$ offline fallback. External map tiles (Esri/OSM), Google Fonts, Google Website Translator, and live satellite/public APIs require connectivity; SMS/WhatsApp buttons open device composers as previews (automated push SMS requires a gateway).
+>
 > **Disclaimer:** Prototype decisions, modeled root-zone salinity ($EC_e$), and economic returns are planning estimates for demonstration and decision support—always verify with local soil tests and agricultural extension guidance.
