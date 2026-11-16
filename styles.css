@@ -148,9 +148,9 @@ body{
   flex:0 0 auto;
   border:0;background:transparent;
   color:var(--muted-foreground);
-  padding:.38rem .64rem;
+  padding:.34rem .5rem;
   border-radius:9999px;
-  font:inherit;font-size:.79rem;font-weight:600;
+  font:inherit;font-size:.77rem;font-weight:600;
   cursor:pointer;white-space:nowrap;
   transition:background .2s var(--spring),color .2s var(--spring),transform .18s var(--spring);
 }
