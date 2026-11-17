@@ -662,18 +662,23 @@
   <p class="lead">Cheap capacitive soil sensors (≈ 15 AED) read <b>wetter</b> than reality in salty soil, so the grower waits too long and the plant gets stressed. Saqi corrects the reading.</p>
   <div class="grid g2">
     <div class="card">
+      <div class="field"><label>Sensor is in</label><select data-bind="sensor.block" id="snBlock"></select></div>
       <div class="field"><label>Soil type</label><select data-bind="sensor.soil" id="snSoil"></select></div>
       <div class="field"><label>Sensor shows (% water)</label><input type="number" step="0.1" data-bind="sensor.reading"></div>
-      <div class="field"><label>Soil salinity ECe (dS/m), from an EC probe or soil test</label><input type="number" step="0.1" data-bind="sensor.ece"></div>
+      <div class="field"><label>Soil salinity (ECe): where does it come from?</label><select data-bind="sensor.eceSource">
+        <option value="modeled">Modeled by Saqi: no soil probe needed</option>
+        <option value="measured">Measured: soil EC probe or lab test</option>
+      </select></div>
+      <div class="field" id="snEceField"><label>Measured soil ECe (dS/m)</label><input type="number" step="0.1" data-bind="sensor.ece" id="snEce"></div>
       <div class="field"><label>Root depth (cm)</label><input type="number" step="5" data-bind="sensor.depth"></div>
-      <div class="field"><label>Salt correction factor k (default 0.35)</label><input type="number" step="0.01" data-bind="sensor.k"></div>
-      <label class="row" style="margin:.4rem 0 .7rem;cursor:pointer"><input type="checkbox" data-bind="sensor.useForFlush"><span>Factor measured soil ECe into Tonight's salt-leaching flush (capped by drainage)</span></label>
+      <div class="field"><label>Salt correction factor k <span class="tag amber">assumed default 0.35</span></label><input type="number" step="0.01" data-bind="sensor.k"></div>
+      <label class="row" style="margin:.4rem 0 .7rem;cursor:pointer" id="snFlushRow"><input type="checkbox" data-bind="sensor.useForFlush" id="snFlush"><span>Use the measured soil ECe in tonight's salt flush and the 60-day forecast (capped by drainage)</span></label>
       <details><summary class="muted">Calibrate k with one soil sample (more accurate)</summary>
         <p class="muted">Weigh a soil sample, oven-dry it, weigh it again to get the true water %. Enter it with the sensor reading at that moment.</p>
         <div class="grid g3">
           <div class="field"><label>Sensor %</label><input type="number" step="0.1" id="calSensor" value="12"></div>
           <div class="field"><label>True % (dried sample)</label><input type="number" step="0.1" id="calTrue" value="8.5"></div>
-          <div class="field"><label>ECe (dS/m)</label><input type="number" step="0.1" id="calEce" value="8"></div>
+          <div class="field"><label>Soil ECe (dS/m)</label><input type="number" step="0.1" id="calEce" value="8"></div>
         </div>
         <button class="btn sm" id="calBtn">Calculate k</button>
       </details>

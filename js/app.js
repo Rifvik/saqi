@@ -37,13 +37,15 @@ function defaultState() {
     drainage: 'good', heatThreshold: 45, startTime: '21:00', lang: 'ur',
     blocks, flowLog: demoFlowLog(blocks),
     blend: { a: { name: 'Desalinated (RO)', ec: 0.4, cost: 5.0 }, b: { name: 'Brackish well', ec: 9.0, cost: 0.5, max: 200 }, block: 1 },
-    sensor: { soil: 'sand', reading: 9.5, ece: 8, k: 0.35, depth: 40, tested: isoDaysAgo(3), useForFlush: false },
+    sensor: { soil: 'sand', reading: 9.5, ece: 8, k: 0.35, depth: 40, tested: isoDaysAgo(3), useForFlush: false, eceSource: 'modeled', block: 0 },
     share: { cap: 400, pump: 25, price: 1.5, link: true, farms: [
       { name: 'My farm', share: 25, need: 150 }, { name: 'Al Kaabi farm', share: 25, need: 60 }, { name: 'Rashid farm', share: 20, need: 140 },
       { name: 'Hamad farm', share: 15, need: 30 }, { name: 'Saeed farm', share: 15, need: 110 }] },
     planner: { system: 'drip', avail: 80, current: 'alfalfa' },
   };
 }
+/* Soil ECe the farmer actually measured (null when Saqi is modelling it instead). */
+function measuredSoilECe() { return state.sensor?.eceSource === 'measured' && +state.sensor.ece > 0 ? +state.sensor.ece : null; }
 function load() {
   const def = defaultState();
   try {
@@ -145,7 +147,7 @@ function weeklyRevenue(crop, area, nDays) { return crop.yield * 1000 * crop.pric
 function computeAll() {
   const ecw = Math.min(25, Math.max(0, +state.water.ec || 0)); const n = wx.days.length; const thr = +state.heatThreshold; // ECw clamped to EC-pen range 0–25 dS/m
   const drainage = state.drainage || 'good';
-  const prevECe = +state.sensor?.ece || null;
+  const prevECe = measuredSoilECe();
   const soilForFlush = state.sensor?.useForFlush ? prevECe : null;
   return state.blocks.map((b, bi) => {
     const crop = CROPS[b.crop];
@@ -192,7 +194,7 @@ function saltProjection(b, crop, flow, daily, ecw, drainage) {
     wxOnly.push(dec.netNeed);
     habit.push(habitMm);
   });
-  const sensorOn = state.sensor?.useForFlush && +state.sensor?.ece > 0;
+  const sensorOn = Boolean(state.sensor?.useForFlush && measuredSoilECe());
   const startECe = sensorOn ? +state.sensor.ece : +(crop.ecThr * 0.8).toFixed(2);
   const run = applied => Engine.saltForecast({ crop, ecw, startECe, applied, etc, drainage, fcPct: (SOILS[state.sensor?.soil] || SOILS.sand).fc });
   const m3 = arr => sum(arr) / Ea * b.area * 10;
@@ -242,7 +244,7 @@ function renderToday() {
   const ecAge = daysSince(state.water.tested);
   const ecStale = ecAge == null || ecAge > 30 || (state.water.source || '').startsWith('estimated');
   const ecConf = `<span class="tag ${ecStale ? 'amber' : 'green'}">Water ECw: ${fmt(ecw, 1)} dS/m · ${esc(state.water.source || 'measured')}${ecAge != null ? ` · ${ecAge === 0 ? 'today' : ecAge + 'd ago'}` : ''}${ecStale ? ' (verify soon)' : ''}</span>`;
-  const drainConf = `<span class="tag ${drainage === 'poor' ? 'red' : drainage === 'moderate' ? 'amber' : 'blue'}">Soil ECe: modeled FAO-29 steady-state (${drainage} drainage)${state.sensor?.ece != null ? ` · Sensor ${fmt(state.sensor.ece, 1)} dS/m (${state.sensor.useForFlush ? 'bounded flush heuristic active' : 'monitor only'})` : ''}</span>`;
+  const drainConf = `<span class="tag ${drainage === 'poor' ? 'red' : drainage === 'moderate' ? 'amber' : 'blue'}">Soil ECe: modeled FAO-29 salt balance (${drainage} drainage)${measuredSoilECe() ? ` · Measured ${fmt(measuredSoilECe(), 1)} dS/m (${state.sensor.useForFlush ? 'used in tonight’s flush' : 'monitor only'})` : ''}</span>`;
   const flowBad = results.some(r => r.flags.status !== 'ok' || r.today.invalidFlow);
   const flowConf = `<span class="tag ${flowBad ? 'red' : 'blue'}">Flow: ${flowBad ? 'check flow / pipes' : 'synthetic 14d meter baseline'} · Hargreaves backup ET₀ ${hargToday}</span>`;
   $('#dataConfidence').innerHTML = wxConf + ecConf + drainConf + flowConf;

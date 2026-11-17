@@ -997,6 +997,7 @@ html[data-calm-bg="1"] .reveal{opacity:1 !important;transform:none !important;tr
 }
 .ai-fab:hover{transform:translateY(-2px);filter:brightness(1.06)}
 .ai-fab[hidden]{display:none}
+#snEceField[hidden],#snFlushRow[hidden]{display:none}
 [dir="rtl"] .ai-fab{right:auto;left:1.15rem}
 
 /* Printable / PDF Report Preview */
