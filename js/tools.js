@@ -188,17 +188,23 @@ function drawSample(kind) {
 function analyseHarvest() {
   const c = $('#hvCanvas'), ctx = c.getContext('2d');
   const d = ctx.getImageData(0, 0, c.width, c.height).data;
-  const n = { green: 0, yellow: 0, red: 0, brown: 0, dark: 0 }; let total = 0, fruit = 0;
+  const n = { green: 0, yellow: 0, red: 0, brown: 0, dark: 0 }; let total = 0, fruit = 0, foliage = 0;
+  const W = c.width, H = c.height;
   for (let i = 0; i < d.length; i += 8) {
+    // Only the central 80% of the frame: the bunch is centred, edges are usually fronds, sky or ground.
+    const px = (i / 4) % W, py = Math.floor(i / 4 / W);
+    if (px < W * 0.1 || px > W * 0.9 || py < H * 0.1 || py > H * 0.9) continue;
     total++;
     const [h, s, v] = rgb2hsv(d[i], d[i + 1], d[i + 2]);
     if (v < 0.1 || s < 0.22) continue;
+    // Unripe (Kimri) dates are yellow-green (hue ~60-100°); palm fronds and leaves are blue-green (100-170°), so ignore those.
+    if (h > 100 && h <= 170) { foliage++; continue; }
     fruit++;
-    if (h >= 65 && h <= 170) n.green++;
+    if (h >= 60 && h <= 100) n.green++;
     else if (v < 0.33) n.dark++;
     else if ((h <= 40 || h >= 330) && v < 0.6) n.brown++;
     else if (h >= 330 || h < 20) n.red++;
-    else if (h < 65) n.yellow++;
+    else if (h < 60) n.yellow++;
     else fruit--;
   }
   const out = $('#hvOut');
@@ -212,6 +218,7 @@ function analyseHarvest() {
   const bar = (label, v, col) => `<div class="row"><span style="width:120px" class="muted">${label}</span><div class="bar" style="flex:1"><i style="width:${v * 100}%;background:${col}"></i></div><span style="width:44px" class="muted">${pct(v)}</span></div>`;
   out.innerHTML = `<div class="muted">Stage</div><div class="verdict">${stage}</div><p><b>${action}</b></p><div class="alert blue">💧 ${water}</div>
     ${bar('Green (Kimri)', g, '#6f9a2c')}${bar('Yellow/red (Khalal)', kh, '#e9c03a')}${bar('Soft brown (Rutab)', br, '#8a5a2b')}${bar('Dark (Tamr)', dk, '#4a2a14')}
+    ${foliage / total > 0.1 ? `<p class="muted">Ignored ${pct(foliage / total)} of the frame as leaves or fronds (blue-green), not fruit.</p>` : ''}
     <p class="muted">The colour analysis runs on the phone: no upload and no data cost. It is a screening aid, so confirm by tasting a few fruits from different sides of the bunch.</p>`;
 }
 
@@ -524,7 +531,10 @@ function initTools() {
         moveMapTo(lat, lon, `GPS (${lat.toFixed(3)}, ${lon.toFixed(3)})`);
         toast(`Located at ${lat.toFixed(4)}°N, ${lon.toFixed(4)}°E`);
       },
-      () => toast('Location permission unavailable — search a place name or click anywhere on the map')
+      err => toast(err && err.code === 3
+        ? 'GPS is slow here: search a place name or tap your field on the map'
+        : 'Location permission unavailable: search a place name or click anywhere on the map'),
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 10 * 60 * 1000 } // weak farm signal: don't hang, accept a recent fix
     );
   };
   const doSearch = async () => {
