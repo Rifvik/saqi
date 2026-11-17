@@ -292,12 +292,25 @@ function advFarms() {
     const c = CROPS[f.crop];
     const dn = Math.min(1, Math.max(0, (f.ndviPrev - f.ndvi) / 0.15)), dm = f.ndmi < 0 ? Math.min(1, -f.ndmi / 0.2) : 0;
     const ds = Math.min(1, Math.max(0, f.ecw / (5 * c.ecThr))), dv = Math.min(1, f.days / 60);
-    f.score = Math.round(45 * dn + 25 * dm + 20 * ds + 10 * dv);
+    f.parts = { vigour: Math.round(45 * dn), water: Math.round(25 * dm), salt: Math.round(20 * ds), visit: Math.round(10 * dv) };
+    f.score = f.parts.vigour + f.parts.water + f.parts.salt + f.parts.visit;
+    const fell = dn > 0.3, dry = dm > 0.3, lr = Engine.leachingReq(f.ecw, c.ecThr), salty = lr === null || lr > 0.4, overdue = f.days > 60;
     f.reasons = [];
-    if (dn > 0.3) f.reasons.push(`vigour fell ${fmt((f.ndviPrev - f.ndvi) * 100 / f.ndviPrev)}% in 20 days`);
-    if (dm > 0.3) f.reasons.push('crop is short of water (low NDMI)');
-    if (Engine.leachingReq(f.ecw, c.ecThr) === null || Engine.leachingReq(f.ecw, c.ecThr) > 0.4) f.reasons.push(`water ${fmt(f.ecw, 1)} dS/m is too salty for ${c.name.toLowerCase()}`);
-    if (f.days > 60) f.reasons.push(`not visited for ${f.days} days`);
+    if (fell) f.reasons.push(`vigour fell ${fmt((f.ndviPrev - f.ndvi) * 100 / f.ndviPrev)}% in 20 days`);
+    if (dry) f.reasons.push('leaves are dry (low NDMI)');
+    if (salty) f.reasons.push(`water ${fmt(f.ecw, 1)} dS/m is too salty for ${c.name.toLowerCase()}`);
+    if (overdue) f.reasons.push(`not visited for ${f.days} days`);
+    // Likely cause + what to do on arrival, from the same signals (a triage hint, not a diagnosis).
+    const isDate = f.crop === 'date';
+    [f.cause, f.action] =
+      fell && salty ? ['Salt damage', 'Measure water and soil EC; run a leaching (salt-flush) irrigation and blend in fresher water if available.']
+      : fell && dry ? ['Irrigation failure', 'Check the pump, flow meter and drip lines first (clog, burst, or valve not opening).']
+      : salty && dry ? ['Salt + water stress', 'Raise irrigation with a salt flush; check drainage so the flush can leave the root zone.']
+      : fell ? ['Pest, disease or nutrients', isDate ? 'Inspect for red palm weevil and leaf spots; check fertiliser timing.' : 'Inspect leaves and roots for pests or disease; check fertiliser timing.']
+      : dry ? ['Water stress starting', 'Increase tonight\'s runtime per the Saqi plan and confirm night-time watering.']
+      : salty ? ['Salt building up', 'Test soil ECe and set up a regular salt-flush schedule before yield drops.']
+      : overdue ? ['Routine visit overdue', 'Quick check-in; satellite signals look normal.']
+      : ['No action', 'Keep monitoring remotely.'];
   });
   ADV.sort((a, b) => b.score - a.score);
   return ADV;
@@ -315,11 +328,14 @@ function renderAdviser() {
     ${F.slice(0, 5).map((f, i) => `<text x="${X(f.lon) + 9}" y="${Y(f.lat) + 4}" font-size="11" font-weight="700" fill="var(--chart-text)">${i + 1}</text>`).join('')}</svg>
     <div class="row" style="margin-top:.4rem"><span class="tag red">High ≥ 60</span><span class="tag amber">Medium 35–59</span><span class="tag green">Watch &lt; 35</span></div>`;
   $('#advRegionSel').onchange = e => { advRegion = e.target.value; renderAdviser(); };
-  $('#advTop').innerHTML = F.slice(0, 5).map((f, i) => `<div class="alert ${f.score >= 60 ? 'red' : f.score >= 35 ? 'amber' : 'green'}"><b>${i + 1}. ${f.id}</b> · ${f.region} · ${CROPS[f.crop].name} · risk <b>${f.score}</b><br><span class="muted">${f.reasons.join(' · ') || 'combined moderate signals'}</span></div>`).join('') +
-    `<p class="muted">Scoring: vigour drop 45% · water stress 25% · salinity vs crop 20% · time since visit 10%. One adviser can cover hundreds of farms and still reach problems while they can be fixed.</p>`;
-  $('#advTable').innerHTML = `<tr><th>#</th><th>Farm</th><th>Region</th><th>Crop</th><th class="num">NDVI before → now</th><th class="num">NDMI</th><th class="num">Water EC</th><th class="num">Last visit</th><th class="num">Risk</th></tr>` +
+  $('#advTop').innerHTML = F.slice(0, 5).map((f, i) => `<div class="alert ${f.score >= 60 ? 'red' : f.score >= 35 ? 'amber' : 'green'}"><span class="alert-body"><b>${i + 1}. ${f.id}</b> · ${f.region} · ${CROPS[f.crop].name} · risk <b>${f.score}</b>
+      <br><b>Likely cause: ${f.cause}.</b> ${f.action}
+      <br><span class="muted">Signals: ${f.reasons.join(' · ') || 'combined moderate signals'}</span>
+      <br><span class="muted">Score = vigour ${f.parts.vigour} + leaf water ${f.parts.water} + salt ${f.parts.salt} + visit gap ${f.parts.visit}</span></span></div>`).join('') +
+    `<p class="muted">Risk score out of 100: vigour drop up to 45, dry leaves up to 25, water salinity vs the crop's tolerance up to 20, days since last visit up to 10. The likely cause is a triage hint for the visit, not a diagnosis.</p>`;
+  $('#advTable').innerHTML = `<tr><th>#</th><th>Farm</th><th>Region</th><th>Crop</th><th class="num">NDVI before → now</th><th class="num">NDMI</th><th class="num">Water EC</th><th class="num">Last visit</th><th>Likely cause</th><th class="num">Risk</th></tr>` +
     F.map((f, i) => `<tr><td>${i + 1}</td><td>${f.id}</td><td>${f.region}</td><td>${CROPS[f.crop].name}</td><td class="num">${fmt(f.ndviPrev, 2)} → <b class="${f.ndvi < f.ndviPrev - 0.05 ? 'bad' : ''}">${fmt(f.ndvi, 2)}</b></td>
-      <td class="num ${f.ndmi < 0 ? 'bad' : ''}">${fmt(f.ndmi, 2)}</td><td class="num">${fmt(f.ecw, 1)}</td><td class="num">${f.days} d</td>
+      <td class="num ${f.ndmi < 0 ? 'bad' : ''}">${fmt(f.ndmi, 2)}</td><td class="num">${fmt(f.ecw, 1)}</td><td class="num">${f.days} d</td><td>${f.cause}</td>
       <td class="num"><span class="tag" style="background:${riskColor(f.score)};color:#fff">${f.score}</span></td></tr>`).join('');
 }
 
