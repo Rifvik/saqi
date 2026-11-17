@@ -119,10 +119,25 @@ def send_error(handler: Any, status: int, code: str, message: str, extra_headers
 def send_options(handler: Any, allow_methods: str) -> None:
     handler.send_response(204)
     handler.send_header("Allow", allow_methods)
+    handler.send_header("Content-Length", "0")
     handler.send_header("Cache-Control", "no-store")
     for k, v in cors_headers_for(getattr(handler, "headers", None)).items():
         handler.send_header(k, v)
     handler.end_headers()
+
+
+def drain_body(handler: Any, max_bytes: int = 4 * MAX_BODY_BYTES) -> None:
+    """Read and discard a request body (bounded) so an early error reply is not turned into a connection reset."""
+    headers = getattr(handler, "headers", None)
+    try:
+        remaining = min(int((headers.get("Content-Length") if headers else 0) or 0), max_bytes)
+    except ValueError:
+        return
+    while remaining > 0:
+        chunk = handler.rfile.read(min(65536, remaining))
+        if not chunk:
+            break
+        remaining -= len(chunk)
 
 
 def read_json_body(rfile: Any, headers: Any, max_bytes: int = MAX_BODY_BYTES) -> tuple[dict | None, tuple[int, str, str] | None]:
@@ -167,6 +182,7 @@ def serve_ai_post(handler: Any, route: str, service: SaqiAIService, limiter: Rat
     if limiter is not None:
         ip = client_ip(getattr(handler, "headers", None), getattr(handler, "client_address", None))
         if not limiter.allow(ip):
+            drain_body(handler)
             return send_error(handler, 429, "rate_limited", "Too many AI requests. Please wait a minute.", extra_headers=extra)
 
     payload, err = read_json_body(handler.rfile, getattr(handler, "headers", None))
