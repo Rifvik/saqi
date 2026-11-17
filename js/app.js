@@ -621,7 +621,7 @@ function renderHomeSim() {
   if ($('#resTitle')) $('#resTitle').textContent = saved ? 'Water saved vs. guesswork' : 'Yield protected in extreme heat';
   if ($('#resSub')) $('#resSub').textContent = saved
     ? `A fixed 240-min habit uses ${fmt(d.traditionalLitres)} L on 2 ha. Saqi gives ${fmt(d.smartLitres)} L: crop ET₀ (${d.et0} mm/d) + exact salt flush.`
-    : `A fixed 240-min habit (${fmt(d.traditionalLitres)} L) under-waters today (${d.habitYieldPct}% est. yield). Saqi increases run time to stop stress.`;
+    : `A fixed 240-min habit (${fmt(d.traditionalLitres)} L) under-waters today (${d.habitYieldPct}% est. yield over 90 days). Saqi increases run time to stop stress.`;
   $('#resSavedPct').textContent = saved ? `${d.savedPct}%` : `+${Math.abs(d.savedPct)}%`;
   if ($('#resPctLabel')) $('#resPctLabel').textContent = saved ? 'water saved' : 'heat/salt buffer';
   $('#resSavedL').textContent = saved ? fmt(absSaved) + ' L' : fmt(d.smartLitres) + ' L';
@@ -636,7 +636,7 @@ function renderHomeSim() {
     (simCond.moisture < 7 ? ' (+dry sandy soil deficit factor)' : '') +
     (simCond.temperature >= 45 ? ' + 10% heatwave buffer' : '') +
     ` with ${d.flushPct}% FAO-29 salt flush at ECw ${ecw.toFixed(1)} dS/m.`;
-  $('#simRisk').textContent = `${d.stressRisk} stress risk (${d.smartYieldPct}% est. yield)`;
+  $('#simRisk').textContent = `${d.stressRisk} stress risk (${d.smartYieldPct}% est. yield over 90 days)`;
   $('#simLitres').textContent = `${fmt(d.smartLitres)} L today (Weather-only: ${fmt(d.weatherOnlyLitres)} L)`;
 
   $('#cmpTradL').textContent = fmt(d.traditionalLitres) + ' L';
@@ -649,7 +649,7 @@ function renderHomeSim() {
   $('#cmpSavedPct').textContent = saved ? `${d.savedPct}%` : `+${Math.abs(d.savedPct)}%`;
   if ($('#cmpSavedNote')) $('#cmpSavedNote').innerHTML = saved
     ? `<span id="cmpSavedL">${fmt(absSaved)}</span> litres stay available vs. habit, while protecting salt balance vs. weather-only.`
-    : `<span id="cmpSavedL">${fmt(absSaved)}</span> extra litres prevent crop collapse when 240-min habit under-waters (${d.habitYieldPct}% est. yield).`;
+    : `<span id="cmpSavedL">${fmt(absSaved)}</span> extra litres stop heat and salt stress when the 240-min habit under-waters (${d.habitYieldPct}% est. yield over 90 days).`;
   const etBadge = $('#simEt0Badge');
   if (etBadge) {
     const todayLive = wx?.days?.[0];

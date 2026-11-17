@@ -288,10 +288,17 @@ const Engine = (() => {
     const block = { crop: 'date', area: 2.0, day: 180, system: 'drip', flow: 40, habitMin: 240 };
     const dec = blockDecision(block, crop, { et0, rain: 0 }, waterEc, temperature >= 45, drainage);
     const wxOnly = weatherOnlyDecision(block, crop, { et0, rain: 0 });
-    const evalSmart = evaluate(crop, block, dec.m3, dec.etc, waterEc, drainage);
-    const evalWx = evaluate(crop, block, wxOnly.m3, dec.etc, waterEc, drainage);
+    // Each strategy is scored as if repeated for 90 days (one summer), using the transient salt balance (not instant steady state).
+    const startECe = crop.ecThr * 0.8, DAYS = 90;
+    const trans = m3 => {
+      const I = m3 / (block.area * 10) * dec.Ea;
+      const f = saltForecast({ crop, ecw: waterEc, startECe, applied: Array(DAYS).fill(I), etc: Array(DAYS).fill(dec.netNeed), drainage });
+      return { ece: f.endECe, ys: f.meanY, startECe };
+    };
+    const evalSmart = evaluate(crop, block, dec.m3, dec.etc, waterEc, drainage, null, trans(dec.m3));
+    const evalWx = evaluate(crop, block, wxOnly.m3, dec.etc, waterEc, drainage, null, trans(wxOnly.m3));
     const traditionalLitres = Math.round(block.habitMin / 60 * block.flow * 1000);
-    const evalHabit = evaluate(crop, block, traditionalLitres / 1000, dec.etc, waterEc, drainage);
+    const evalHabit = evaluate(crop, block, traditionalLitres / 1000, dec.etc, waterEc, drainage, null, trans(traditionalLitres / 1000));
 
     const flushPct = Math.round((1 / Math.max(0.1, 1 - dec.LR) - 1) * 100);
     const totalMinutes = Math.round((dec.minutes || 0) / 5) * 5;
