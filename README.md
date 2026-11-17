@@ -166,6 +166,11 @@ Open **`http://127.0.0.1:8765/index.html`** in your browser.
 | **Modeled Root-Zone Salinity** | $EC_e = \dfrac{EC_w (1 + LF_{\text{eff}})}{5 \cdot LF_{\text{eff}}}$, where $LF_{\text{eff}} = \min(LF_{\text{raw}}, LF_{\text{drainMax}})$ | Steady-state drainage-constrained balance |
 | **Gross Irrigation & Minutes** | $D_{\text{gross}} = \dfrac{\max(0, \text{ET}_c - R_{\text{eff}}) \cdot f_{\text{heat}}}{(1 - LR)\cdot E_a}$, $\; t = \dfrac{D_{\text{gross}} \cdot A \cdot 10}{Q_{\text{block}}} \times 60$ | Single application of $LR$ and $E_a$ (no double counting); $Q_{\text{block}}$ in $\text{m}^3/\text{h}$ |
 | **Est. Relative Yield** | $Y_s = 1 - \frac{b}{100}(EC_e - EC_{e,\text{thr}})$ combined with water-deficit factor $1 - K_y(1 - \frac{I}{\text{ET}_c})$ | Maas–Hoffman & FAO Paper 33 |
+| **Transient Root-Zone Salt (60-day forecast)** | Daily bucket: $W_e \,\Delta EC_e = I\,EC_w - D \cdot \dfrac{5\,EC_e}{1+LF}$, $D = \min(\max(0, I-\text{ET}_c),\, LF_{\text{drainMax}} I)$, $W_e = 2\,\theta_{fc}\,z_{root}$ | Equilibrium equals FAO-29 Rhoades; root depth FAO-56 Table 22. `Engine.saltForecast()` |
+| **Runtime Uncertainty Range** | Same decision re-run at $\text{ET}_0(1\pm u)$, $EC_w \pm (2\% + 0.1)$, $E_a \pm 0.05$; $u$ = 10% live, 15% cached, 20% climate | `Engine.runtimeRange()`, assumptions in `UNCERTAINTY` (`js/data.js`) |
+| **Local Hargreaves Calibration** | $k = \sum \text{ET}_{0,PM} / \sum \text{ET}_{0,HG}$ learned from each live forecast, applied to the offline backup | `Engine.hargreavesBias()` |
+
+**Why the transient model matters:** salt does not reach steady state overnight. The weekly comparison and the 60-day card integrate the daily salt balance from a starting ECe (measured soil sensor if enabled, otherwise *assumed* 80% of the crop threshold), so the app can say *when* each strategy starts costing yield rather than assuming instant equilibrium.
 
 ---
 

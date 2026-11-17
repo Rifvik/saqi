@@ -130,8 +130,17 @@ def read_json_body(rfile: Any, headers: Any, max_bytes: int = MAX_BODY_BYTES) ->
         length = int((headers.get("Content-Length") if headers else 0) or 0)
     except ValueError:
         length = 0
-    if length <= 0 or length > max_bytes:
-        return None, (413 if length > max_bytes else 400, "bad_request", "Request body missing or too large.")
+    if length > max_bytes:
+        # Drain (bounded) so the client receives a clean 413 instead of a connection reset mid-upload.
+        remaining = min(length, 4 * max_bytes)
+        while remaining > 0:
+            chunk = rfile.read(min(65536, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+        return None, (413, "payload_too_large", "Request body too large.")
+    if length <= 0:
+        return None, (400, "bad_request", "Request body missing.")
     raw = rfile.read(length)
     if not raw or len(raw) > max_bytes:
         return None, (413 if raw and len(raw) > max_bytes else 400, "bad_request", "Request body missing or too large.")

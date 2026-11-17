@@ -97,3 +97,50 @@ test('vendored offline UTF-8 QR code generator encodes worker Arabic/Urdu notes 
   const svg = qr.createSvgTag({ cellSize: 4, margin: 2 });
   assert(svg.includes('<svg') && svg.includes('<path'));
 });
+
+test('runtimeRange brackets the point estimate and widens with ET0 uncertainty', () => {
+  const blk = { crop: 'tomato', area: 0.5, day: 60, system: 'drip', flowMode: 'direct', flow: 12 };
+  const wx = { et0: 6, rain: 0 };
+  const mid = Engine.blockDecision(blk, CROPS.tomato, wx, 3.0, false, 'good');
+  const narrow = Engine.runtimeRange(blk, CROPS.tomato, wx, 3.0, { uEt: 0.10 });
+  const wide = Engine.runtimeRange(blk, CROPS.tomato, wx, 3.0, { uEt: 0.20 });
+  assert(narrow.loMin < mid.minutes && mid.minutes < narrow.hiMin);
+  assert(wide.hiMin - wide.loMin > narrow.hiMin - narrow.loMin);
+});
+
+test('saltForecast converges to the FAO-29 steady state and flags threshold crossing', () => {
+  const crop = CROPS.tomato, ecw = 3.0, days = 400;
+  const etc = Array(days).fill(5);
+  const lf = 0.2;
+  const applied = etc.map(e => e / (1 - lf));
+  const f = Engine.saltForecast({ crop, ecw, startECe: 1.0, applied, etc, drainage: 'good' });
+  assert(Math.abs(f.endECe - Engine.rootzoneECe(ecw, lf)) < 0.05, `end ${f.endECe}`);
+  // Weather-only (no leaching) keeps accumulating salt and crosses the crop threshold.
+  const wxOnly = Engine.saltForecast({ crop, ecw, startECe: 2.0, applied: etc.slice(0, 60), etc: etc.slice(0, 60) });
+  assert(wxOnly.crossDay !== null && wxOnly.endECe > crop.ecThr);
+  // Poor drainage limits flushing: higher end salinity than good drainage for the same over-watering.
+  const over = etc.slice(0, 60).map(e => e * 1.6);
+  const good = Engine.saltForecast({ crop, ecw, startECe: 4, applied: over, etc: etc.slice(0, 60), drainage: 'good' });
+  const poor = Engine.saltForecast({ crop, ecw, startECe: 4, applied: over, etc: etc.slice(0, 60), drainage: 'poor' });
+  assert(poor.endECe > good.endECe);
+});
+
+test('hargreavesBias calibrates the offline ET0 backup against live Penman-Monteith', () => {
+  const days = [0, 1, 2, 3].map(i => ({ date: `2026-11-1${i}`, tmax: 32, tmin: 20 }));
+  const hg = days.map(d => Engine.hargreavesET0(d.tmax, d.tmin, 24.2, Engine.dayOfYear(d.date)));
+  const live = days.map((d, i) => ({ ...d, et0: hg[i] * 0.85 }));
+  assert(Math.abs(Engine.hargreavesBias(live, 24.2) - 0.85) < 1e-6);
+  assert.equal(Engine.hargreavesBias(live.slice(0, 2), 24.2), null);
+});
+
+test('evaluate uses transient salt state so one week without leaching does not wipe out yield', () => {
+  const blk = { crop: 'tomato', area: 0.5, day: 60, system: 'drip', flowMode: 'direct', flow: 12 };
+  const etc = Array(7).fill(6);
+  const f = Engine.saltForecast({ crop: CROPS.tomato, ecw: 3.0, startECe: 2.0, applied: etc, etc });
+  const last = f.series[6];
+  const steady = Engine.evaluate(CROPS.tomato, blk, 6 * 7 * 5 / 0.9, 42, 3.0, 'good');
+  const trans = Engine.evaluate(CROPS.tomato, blk, 6 * 7 * 5 / 0.9, 42, 3.0, 'good', null,
+    { ece: last.ece, ys: Engine.sum(f.series.map(p => p.y)) / 7, startECe: 2.0 });
+  assert(steady.y < 0.2, 'instant steady state is the pessimistic old behaviour');
+  assert(trans.y > 0.85 && trans.saltTrend === 'increasing');
+});
