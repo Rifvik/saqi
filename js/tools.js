@@ -119,6 +119,11 @@ function renderDrip() {
 
 /* ---------- Crop suitability estimate (modeled root-zone salinity) ---------- */
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const SUIT_RANK = { Good: 2, Marginal: 1, Poor: 0 };
+const waterDiff = (cur, best) => {
+  const d = cur.sp.totM3 - best.sp.totM3;
+  return d >= 0 ? `while using <b>${fmt(d)} m³/ha less water</b> (${pct(cur.sp.totM3 > 0 ? d / cur.sp.totM3 : 0)} less)` : `but needs ${fmt(-d)} m³/ha more water`;
+};
 function renderPlanner() {
   const p = state.planner;
   const drainage = state.drainage || 'good';
@@ -132,7 +137,7 @@ function renderPlanner() {
     const endM = (c.plantMonth - 1 + Math.round(sp.L / 30.4) - 1) % 12;
     return { k, c, sp, rev, profit, perM3: profit / sp.totM3, kgM3: c.yield * 1000 * sp.ys / sp.totM3, feasible: sp.peakM3 <= p.avail,
       season: c.perennial ? 'all year' : `${MONTHS[c.plantMonth - 1]}–${MONTHS[endM]}` };
-  }).sort((a, b) => (b.feasible - a.feasible) || (b.perM3 - a.perM3));
+  }).sort((a, b) => (b.feasible - a.feasible) || (SUIT_RANK[b.sp.suitability] - SUIT_RANK[a.sp.suitability]) || (b.perM3 - a.perM3));
   const suitTag = s => s === 'Good' ? 'green' : s === 'Marginal' ? 'amber' : 'red';
   $('#plannerTable').innerHTML = `<tr><th>#</th><th>Crop</th><th>Suitability (est.)</th><th>Season</th><th class="num">Est. water m³/ha</th><th class="num">Peak m³/ha/d</th><th class="num">Modeled ECe (thr)</th><th class="num">Drainage-capped LF</th><th class="num">Est. rel. yield</th><th class="num">Est. AED/m³</th></tr>` +
     rows.map((r, i) => `<tr class="${r.k === p.current ? 'hl' : ''}"><td>${i + 1}</td><td>${r.c.name}${r.k === p.current ? ' <span class="tag amber">now</span>' : ''}${i === 0 ? ' <span class="tag green">top est.</span>' : ''}</td>
@@ -149,9 +154,11 @@ function renderPlanner() {
   } else if (best.perM3 <= 0) {
     note = `At ${fmt(cost, 1)} AED/m³, ECw ${fmt(ecw, 1)} dS/m, and ${drainage} drainage, modeled returns do not cover water costs. Blend fresher water or reduce water cost.`;
   } else if (cur.perM3 <= 0) {
-    note = `Modeled estimate: at this water cost and ${drainage} drainage, ${cur.c.name} shows an estimated loss of <b>${fmt(Math.abs(cur.profit))} AED/ha</b>. Shifting ${fmt(cur.sp.totM3)} m³ to <b>${best.c.name}</b> models at <b>${fmt(best.perM3, 2)} AED/m³</b> (≈ <b>${fmt((best.perM3 - cur.perM3) * cur.sp.totM3)} AED/ha</b> estimated difference).`;
+    note = `Modeled estimate: at this water cost and ${drainage} drainage, ${cur.c.name} shows an estimated loss of <b>${fmt(Math.abs(cur.profit))} AED/ha</b> per season. One hectare of <b>${best.c.name}</b> models at <b>+${fmt(best.profit)} AED/ha</b> ${waterDiff(cur, best)}.`;
+  } else if (best.profit < cur.profit) {
+    note = `Modeled estimate: per hectare ${cur.c.name} earns more (${fmt(cur.profit)} vs ${fmt(best.profit)} AED/ha), but <b>${best.c.name}</b> earns <b>${fmt(best.perM3, 2)} AED per m³</b> vs ${fmt(cur.perM3, 2)} ${waterDiff(cur, best)}. It is the better choice when water, not land, is the limit.`;
   } else {
-    note = `Modeled estimate: with ${fmt(cur.sp.totM3)} m³ of water, <b>${best.c.name}</b> models at ≈ <b>${fmt((best.perM3 - cur.perM3) * cur.sp.totM3)} AED more per ha</b> (or the same estimated return with ${pct(1 - cur.perM3 / best.perM3)} less water).`;
+    note = `Modeled estimate: one hectare of <b>${best.c.name}</b> earns ≈ <b>${fmt(best.profit - cur.profit)} AED more</b> than ${cur.c.name} (${fmt(best.profit)} vs ${fmt(cur.profit)} AED/ha per season) ${waterDiff(cur, best)}.`;
   }
   $('#plannerNote').innerHTML = note + ' <em>All modeled ECe, relative yield, and AED/m³ figures are planning estimates based on FAO-29 / FAO-56 and illustrative UAE farm-gate prices, not guaranteed field yields.</em>';
 }
