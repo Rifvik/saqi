@@ -70,13 +70,17 @@ function scenarioDays(kind) {
   return s.tmax.map((_, i) => ({ date: isoDaysAgo(-i), tmax: s.tmax[i], tmin: s.tmin[i], et0: s.et0[i], wind: s.wind[i], rain: s.rain[i] }));
 }
 function doy(dateStr) { const d = new Date(dateStr + 'T12:00'); return Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 864e5); }
+const HG_BIAS_KEY = 'saqi-hg-bias-';
+function hgBias() { try { const v = +localStorage.getItem(HG_BIAS_KEY + state.location); return v > 0 ? v : null; } catch (e) { return null; } }
 function climatologyDays(loc) {
+  const k = hgBias() || 1; // local Hargreaves→Penman-Monteith calibration learned from past live forecasts
   return Array.from({ length: 7 }, (_, i) => {
     const date = isoDaysAgo(-i); const m = new Date(date + 'T12:00').getMonth();
     const tmax = CLIMATE.tmax[m], tmin = CLIMATE.tmin[m];
-    return { date, tmax, tmin, et0: +Engine.hargreavesET0(tmax, tmin, loc.lat, doy(date)).toFixed(1), wind: 15, rain: 0 };
+    return { date, tmax, tmin, et0: +(k * Engine.hargreavesET0(tmax, tmin, loc.lat, doy(date))).toFixed(1), wind: 15, rain: 0 };
   });
 }
+const climSuffix = () => hgBias() ? ` (calibrated ×${hgBias().toFixed(2)} to past live forecasts here)` : '';
 let simOffline = false;
 try { simOffline = sessionStorage.getItem('saqi-sim-offline') === '1'; } catch (e) { }
 let expandWhyIdx = null;
@@ -92,7 +96,7 @@ async function loadWeather(force) {
   if (simOffline || !navigator.onLine) {
     const prefix = simOffline ? 'Airplane-mode test' : 'Offline';
     if (cached) wx = { ...cached, kind: 'cached', source: `${prefix}: using forecast saved ${new Date(cached.fetchedAt).toLocaleString('en-GB')}` };
-    else wx = { source: `${prefix}, no saved forecast: using climate normals + Hargreaves ET₀ (works with zero internet)`, kind: 'clim', days: climatologyDays(loc) };
+    else wx = { source: `${prefix}, no saved forecast: using climate normals + Hargreaves ET₀ (works with zero internet)${climSuffix()}`, kind: 'clim', days: climatologyDays(loc) };
     return;
   }
   if (!force && cached && Date.now() - cached.fetchedAt < 3 * 3600e3) { wx = { ...cached, kind: 'live' }; return; }
@@ -105,9 +109,11 @@ async function loadWeather(force) {
     const days = d.time.map((t, i) => ({ date: t, tmax: d.temperature_2m_max[i], tmin: d.temperature_2m_min[i], et0: d.et0_fao_evapotranspiration[i], rain: d.precipitation_sum[i] || 0, wind: d.wind_speed_10m_max[i] }));
     wx = { source: 'Live forecast for ' + loc.name + ' (Open-Meteo, FAO-56 Penman-Monteith ET₀)', fetchedAt: Date.now(), days, kind: 'live' };
     try { localStorage.setItem(key, JSON.stringify(wx)); } catch (e) { }
+    const bias = Engine.hargreavesBias(days, loc.lat);
+    if (bias) try { localStorage.setItem(HG_BIAS_KEY + state.location, bias.toFixed(3)); } catch (e) { }
   } catch (e) {
     if (cached) wx = { ...cached, kind: 'cached', source: 'Offline: using forecast saved ' + new Date(cached.fetchedAt).toLocaleString('en-GB') };
-    else wx = { source: 'Offline, no saved forecast: using climate normals + Hargreaves ET₀ (works with zero internet)', kind: 'clim', days: climatologyDays(loc) };
+    else wx = { source: 'Offline, no saved forecast: using climate normals + Hargreaves ET₀ (works with zero internet)' + climSuffix(), kind: 'clim', days: climatologyDays(loc) };
   }
 }
 function updateNet() {
@@ -137,7 +143,7 @@ function dayOf(block, offset = 0) {
 }
 function weeklyRevenue(crop, area, nDays) { return crop.yield * 1000 * crop.price / Engine.seasonLength(crop) * nDays * area; }
 function computeAll() {
-  const ecw = +state.water.ec || 0; const n = wx.days.length; const thr = +state.heatThreshold;
+  const ecw = Math.min(25, Math.max(0, +state.water.ec || 0)); const n = wx.days.length; const thr = +state.heatThreshold; // ECw clamped to EC-pen range 0–25 dS/m
   const drainage = state.drainage || 'good';
   const prevECe = +state.sensor?.ece || null;
   const soilForFlush = state.sensor?.useForFlush ? prevECe : null;
@@ -153,13 +159,45 @@ function computeAll() {
     const weekWeatherOnly = sum(weatherDaily.map(x => x.m3));
     const weekHabit = n * b.habitMin / 60 * flow;
     const netWeek = sum(daily.map(x => x.netNeed));
-    const eo = Engine.evaluate(crop, b, weekOurs, netWeek, ecw, drainage, prevECe);
-    const ew = Engine.evaluate(crop, b, weekWeatherOnly, netWeek, ecw, drainage, prevECe);
-    const eh = Engine.evaluate(crop, b, weekHabit, netWeek, ecw, drainage, prevECe);
+    const salt = saltProjection(b, crop, flow, daily, ecw, drainage);
+    const wk = f => { const pts = f.series.slice(0, n); return { ece: pts[pts.length - 1].ece, ys: sum(pts.map(p => p.y)) / pts.length, startECe: salt.startECe }; };
+    const eo = Engine.evaluate(crop, b, weekOurs, netWeek, ecw, drainage, prevECe, wk(salt.saqi));
+    const ew = Engine.evaluate(crop, b, weekWeatherOnly, netWeek, ecw, drainage, prevECe, wk(salt.wxOnly));
+    const eh = Engine.evaluate(crop, b, weekHabit, netWeek, ecw, drainage, prevECe, wk(salt.habit));
     const rev = weeklyRevenue(crop, b.area, n);
     const flags = Engine.flowCheck(state.flowLog[bi], flow);
-    return { b, bi, crop, flow, today: daily[0], daily, weatherDaily, weekOurs, weekWeatherOnly, weekHabit, netWeek, eo, ew, eh, rev, flags };
+    const uEt = (typeof UNCERTAINTY !== 'undefined' && UNCERTAINTY.et0[wx.kind]) || 0.15;
+    const range = Engine.runtimeRange({ ...b, flow, day: dayOf(b, 0) }, crop, wx.days[0], ecw,
+      { uEt, preHeat: Boolean(wx.days[0].tmax < thr && wx.days[1] && wx.days[1].tmax >= thr), drainage, soilECe: soilForFlush });
+    return { b, bi, crop, flow, today: daily[0], daily, weatherDaily, weekOurs, weekWeatherOnly, weekHabit, netWeek, eo, ew, eh, rev, flags, range, salt };
   });
+}
+
+/* 60-day transient salt projection for three strategies: forecast days first, then monthly climate ET₀. */
+const SALT_HORIZON = 60;
+function saltProjection(b, crop, flow, daily, ecw, drainage) {
+  const Ea = SYSTEMS[b.system].eff;
+  const wxDays = Array.from({ length: SALT_HORIZON }, (_, i) => {
+    if (wx.days[i]) return wx.days[i];
+    const scenMonth = { july: 6, nov: 10 }[state.scenario]; // synthetic weeks continue with their own season
+    const m = scenMonth != null ? (scenMonth + Math.floor(i / 30)) % 12 : new Date(isoDaysAgo(-i) + 'T12:00').getMonth();
+    return { et0: CLIMATE.et0[m], rain: 0 };
+  });
+  const etc = [], saqi = [], wxOnly = [], habit = [];
+  const habitMm = b.area > 0 ? b.habitMin / 60 * flow / (b.area * 10) * Ea : 0;
+  wxDays.forEach((d, i) => {
+    const dec = daily[i] || Engine.blockDecision({ ...b, flow, day: dayOf(b, i) }, crop, d, ecw, false, drainage);
+    etc.push(dec.netNeed);
+    saqi.push(dec.grossMm * dec.Ea);
+    wxOnly.push(dec.netNeed);
+    habit.push(habitMm);
+  });
+  const sensorOn = state.sensor?.useForFlush && +state.sensor?.ece > 0;
+  const startECe = sensorOn ? +state.sensor.ece : +(crop.ecThr * 0.8).toFixed(2);
+  const run = applied => Engine.saltForecast({ crop, ecw, startECe, applied, etc, drainage, fcPct: (SOILS[state.sensor?.soil] || SOILS.sand).fc });
+  const m3 = arr => sum(arr) / Ea * b.area * 10;
+  return { startECe, startAssumed: !sensorOn, saqi: run(saqi), wxOnly: run(wxOnly), habit: run(habit),
+           m3: { saqi: m3(saqi), wxOnly: m3(wxOnly), habit: m3(habit) } };
 }
 
 function daysSince(dateStr) {
@@ -268,6 +306,7 @@ function renderToday() {
       <div class="row" style="justify-content:space-between;align-items:center"><h3>Valve ${r.bi + 1} · ${esc(b.name)}</h3><span class="tag ${tagCls}">${r.crop.name} · ${t.stage}</span></div>
       <div class="big">${invalidFlow ? '<span class="bad">Set block flow &gt; 0 m³/h</span>' : skip ? 'No water today' : `${fmt(mins)} min <span class="after">${isNightWindow ? '🌙 ' : ''}after ${esc(state.startTime)}</span>`}</div>
       <div class="metrics">${fmt(t.m3, 1)} m³ · ${fmt(t.grossMm, 1)} mm · ${fmt(r.flow, 1)} m³/h ${SYSTEMS[b.system].name.toLowerCase()}</div>
+      ${!invalidFlow && !skip && r.range.loMin != null ? `<div class="range-line">Likely range <b>${fmt(round5(r.range.loMin))}–${fmt(round5(r.range.hiMin))} min</b> <span class="muted">(ET₀ ±${pct(r.range.uEt)}, ECw ±${fmt(r.range.dEc, 1)} dS/m, efficiency ±${pct(r.range.dEa)}: assumed input error)</span></div>` : ''}
       <div class="habit-line">Habit ${b.habitMin} min (${fmt(habitM3, 1)} m³) · ${habitTxt}</div>
       <details class="today-why-fold"${r.bi === expandWhyIdx ? ' open' : ''}>
         <summary>Why this runtime?</summary>
@@ -286,8 +325,11 @@ function renderToday() {
   const tH = sum(results.map(r => r.weekHabit));
   const cost = +state.water.cost;
   const saltFlushM3 = tO - tW;
-  const saltYieldProtectedAED = sum(results.map(r => Math.max(0, (r.eo.y - r.ew.y) * r.rev)));
-  const saltNetValueAED = saltYieldProtectedAED - saltFlushM3 * cost;
+  // Salt damage is cumulative, so the value of salt management is judged on the 60-day transient projection.
+  const saltYieldProtectedAED = sum(results.map(r => Math.max(0, (r.salt.saqi.meanY - r.salt.wxOnly.meanY) * weeklyRevenue(r.crop, r.b.area, SALT_HORIZON))));
+  const saltFlush60 = sum(results.map(r => r.salt.m3.saqi - r.salt.m3.wxOnly));
+  const saltNetValueAED = saltYieldProtectedAED - Math.max(0, saltFlush60) * cost;
+  const wx60Yield = sum(results.map(r => r.salt.wxOnly.meanY * r.rev)) / (sum(results.map(r => r.rev)) || 1);
   const habitWaterSaved = tH - tO;
   const habitYieldVal = sum(results.map(r => (r.eo.y - r.eh.y) * r.rev));
   const habitNetAED = habitWaterSaved * cost + habitYieldVal;
@@ -301,7 +343,7 @@ function renderToday() {
   const storyEl = $('#compareStory');
   if (storyEl) {
     const leadStory = habitWaterSaved >= 0
-      ? `<strong>Beat the guess:</strong> Saqi uses <b>${fmt(habitWaterSaved)} m³ less water</b> (${pct(tH > 0 ? habitWaterSaved / tH : 0)} saved vs. ${fmt(tH)} m³ fixed habit) while holding <b>${pct(saqiYield)} est. yield</b> (weather-only drops to <b>${pct(wxYield)}</b> without salt flush).`
+      ? `<strong>Beat the guess:</strong> Saqi uses <b>${fmt(habitWaterSaved)} m³ less water</b> (${pct(tH > 0 ? habitWaterSaved / tH : 0)} saved vs. ${fmt(tH)} m³ fixed habit) while holding <b>${pct(saqiYield)} est. yield</b> (without the salt flush, weather-only slides to <b>${pct(wx60Yield)}</b> salt-limited yield over 60 days).`
       : `<strong>Stop heat &amp; salt loss:</strong> Fixed habit (${fmt(tH)} m³) under-waters this week (${pct(habitYield)} est. yield). Saqi adds <b>+${fmt(Math.abs(habitWaterSaved))} m³</b> to hold <b>${pct(saqiYield)} est. yield</b> (weather-only: <b>${pct(wxYield)}</b>).`;
     storyEl.innerHTML = `<div>${leadStory}</div>
       <div class="compare-story-pills">
@@ -313,7 +355,7 @@ function renderToday() {
   $('#compareKpi').innerHTML = `
     <div><span>Saqi vs. Fixed Habit</span><b class="${habitWaterSaved >= 0 ? 'good' : 'warn'}">${habitWaterSaved >= 0 ? '−' : '+'}${fmt(Math.abs(habitWaterSaved))} m³</b><span>${habitWaterSaved >= 0 ? `saved (${pct(tH > 0 ? habitWaterSaved / tH : 0)} less)` : `more (${pct(tH > 0 ? Math.abs(habitWaterSaved) / tH : 0)}) — protects yield from heat/salt under-watering`} · ${fmt(tO)} vs ${fmt(tH)} m³</span></div>
     <div><span>Salt flush vs. Weather-Only</span><b>+${fmt(Math.max(0, saltFlushM3))} m³</b><span>extra water to leach salts (${fmt(tO)} vs ${fmt(tW)} m³)</span></div>
-    <div><span>Est. value of salt management</span><b class="${saltNetValueAED >= 0 ? 'good' : 'warn'}">${saltNetValueAED >= 0 ? '+' : '−'}${fmt(Math.abs(saltNetValueAED))} AED</b><span>+${fmt(saltYieldProtectedAED)} AED est. crop protected vs weather-only</span></div>
+    <div><span>Est. value of salt management (60 days)</span><b class="${saltNetValueAED >= 0 ? 'good' : 'warn'}">${saltNetValueAED >= 0 ? '+' : '−'}${fmt(Math.abs(saltNetValueAED))} AED</b><span>+${fmt(saltYieldProtectedAED)} AED est. crop protected vs weather-only, minus ${fmt(Math.max(0, saltFlush60))} m³ flush water</span></div>
     <div><span>Est. total benefit vs. Habit</span><b class="${habitNetAED >= 0 ? 'good' : 'bad'}">${habitNetAED >= 0 ? '+' : '−'}${fmt(Math.abs(habitNetAED))} AED</b><span>water cost diff + est. stress protection</span></div>`;
 
   $('#compareTable').innerHTML = `<tr><th>Valve</th><th class="num">Saqi m³</th><th class="num">Wx-only m³</th><th class="num">Habit m³</th><th class="num">Modeled ECe (Saqi / Wx-only / Habit)</th><th class="num">Est. rel. yield (Saqi / Wx-only / Habit)</th><th class="num">Salt-aware est. gain</th></tr>` +
@@ -341,10 +383,88 @@ function renderToday() {
   }).join('');
   if ($('#todayModelNote')) {
     const habEx = state.blocks[0] ? `${state.blocks[0].habitMin} min/day on ${state.blocks[0].name}` : '240 min/day';
-    $('#todayModelNote').innerHTML = `Model note: Weekly water balance constrained by drainage capacity (${drainage}). Effective leaching sets steady-state modeled root-zone ECe (FAO-29 Rhoades); modeled ECe → estimated relative yield (Maas–Hoffman); water deficit → Ky (FAO-33). Fixed habit baseline uses farmer-entered timer schedules per valve (e.g. ${esc(habEx)}, editable in My farm). All yields and ECe values are <b>estimates</b>, not guaranteed field yields.`;
+    $('#todayModelNote').innerHTML = `Model note: Today's runtime range re-runs the same model at the edges of assumed input error (forecast ET₀, EC-pen accuracy, irrigation efficiency). Weekly water balance constrained by drainage capacity (${drainage}). Root-zone ECe follows a daily salt mass balance from the start ECe (equilibrium = FAO-29 Rhoades steady state), so salt builds over weeks rather than instantly; week-average ECe → estimated relative yield (Maas–Hoffman); water deficit → Ky (FAO-33). Fixed habit baseline uses farmer-entered timer schedules per valve (e.g. ${esc(habEx)}, editable in My farm). All yields and ECe values are <b>estimates</b>, not guaranteed field yields.`;
   }
 
+  renderSaltForecast();
+  renderModelChecks();
   renderVoice();
+}
+
+/* ---------- Live model checks (About → Validation) ---------- */
+function renderModelChecks() {
+  const box = $('#modelChecks'); if (!box || !wx || !results.length) return;
+  const loc = LOCATIONS[state.location] || LOCATIONS.alain;
+  const ecw = Math.max(0, +state.water.ec || 0);
+  const row = (ok, title, body) => `<div class="step"><span class="step-num">${ok === null ? 'ℹ️' : ok ? '✅' : '⚠️'}</span><div><b>${title}</b> ${body}</div></div>`;
+  const out = [];
+  // 1. Backtest offline Hargreaves against live Penman-Monteith for this week.
+  if (wx.kind === 'live' || wx.kind === 'cached') {
+    const errs = wx.days.filter(d => d.et0 > 0).map(d => Math.abs(Engine.hargreavesET0(d.tmax, d.tmin, loc.lat, doy(d.date)) - d.et0) / d.et0);
+    const k = Engine.hargreavesBias(wx.days, loc.lat) || 1;
+    const errsCal = wx.days.filter(d => d.et0 > 0).map(d => Math.abs(k * Engine.hargreavesET0(d.tmax, d.tmin, loc.lat, doy(d.date)) - d.et0) / d.et0);
+    const mape = sum(errs) / (errs.length || 1), mapeCal = sum(errsCal) / (errsCal.length || 1);
+    out.push(row(mapeCal < 0.2, 'Offline ET₀ backtest:', `raw Hargreaves vs live Penman-Monteith over ${errs.length} days = <b>${pct(mape)}</b> mean error; after local calibration ×${k.toFixed(2)} = <b>${pct(mapeCal)}</b> (in-sample; refreshed on every live fetch).`));
+  } else out.push(row(null, 'Offline ET₀ backtest:', 'needs one live forecast to compare against (currently using ' + esc(wx.kind === 'scenario' ? 'a synthetic scenario' : 'climate normals') + ').'));
+  // 2. Transient salt model must converge to the published FAO-29 steady state.
+  const crop = results[0].crop, lf = 0.2, N = 720;
+  const eq = Engine.saltForecast({ crop, ecw: Math.max(ecw, 0.5), startECe: 0.5, applied: Array(N).fill(6 / (1 - lf)), etc: Array(N).fill(6) }).endECe;
+  const ref = Engine.rootzoneECe(Math.max(ecw, 0.5), lf), eqErr = Math.abs(eq - ref) / ref;
+  out.push(row(eqErr < 0.02, 'Salt model vs FAO-29:', `2-year simulation at LF 20% settles at <b>${fmt(eq, 2)}</b> dS/m vs FAO-29 steady state <b>${fmt(ref, 2)}</b> dS/m (error ${pct(eqErr)}).`));
+  // 3. Water balance closes for every valve (LR and efficiency applied exactly once).
+  const closes = results.every(r => Math.abs(r.today.grossMm * (1 - r.today.LR) * r.today.Ea - r.today.netNeed * (r.today.preHeat ? 1.1 : 1)) < 1e-6);
+  out.push(row(closes, 'Water balance closes:', `gross × (1 − LR) × efficiency = crop need for all ${results.length} valves${closes ? '' : ' (check inputs)'}.`));
+  // 4. Does Saqi beat the grower's guess over 60 days?
+  const beats = results.filter(r => r.salt.m3.saqi <= r.salt.m3.habit * 1.001 && r.salt.saqi.meanY >= r.salt.habit.meanY - 0.005).length;
+  const protects = results.filter(r => r.salt.saqi.meanY > r.salt.habit.meanY + 0.005).length;
+  out.push(row(beats + protects === results.length, 'Beats the guess (60 days):', `on <b>${beats}</b> of ${results.length} valves Saqi uses less water than the fixed habit with equal or better yield${protects ? `; on <b>${protects}</b> it uses more water to stop heat/salt loss the habit causes` : ''}.`));
+  // 5. Input sanity.
+  const rawEc = +state.water.ec;
+  out.push(row(rawEc >= 0 && rawEc <= 20, 'Input check:', `water ECw ${fmt(rawEc, 1)} dS/m ${rawEc > 20 ? '(above EC-pen range: re-measure)' : rawEc < 0 ? '(negative: treated as 0)' : 'within EC-pen range'}; ${results.filter(r => r.today.invalidFlow).length} valve(s) missing flow.`));
+  box.innerHTML = out.join('');
+}
+
+/* ---------- 60-day salt forecast ---------- */
+let saltValveIdx = 1;
+function saltChartSvg(r) {
+  const W = 640, H = 220, L = 38, R = 10, T = 12, B = 26;
+  const S = r.salt, thr = r.crop.ecThr;
+  const series = [['habit', 'var(--destructive)', 'Fixed habit'], ['wxOnly', 'var(--warn)', 'Weather-only'], ['saqi', 'var(--good)', 'Saqi']];
+  const all = series.flatMap(([k]) => S[k].series.map(p => p.ece)).concat([thr, S.startECe]);
+  const yMax = Math.max(...all) * 1.12 || 1;
+  const x = d => L + (d / SALT_HORIZON) * (W - L - R);
+  const y = v => T + (1 - v / yMax) * (H - T - B);
+  const path = k => 'M' + [[0, S.startECe], ...S[k].series.map(p => [p.day, p.ece])].map(([d, v]) => `${x(d).toFixed(1)},${y(v).toFixed(1)}`).join('L');
+  const ticks = [0, yMax / 2, yMax].map(v => `<text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${fmt(v, 1)}</text><line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" class="grid"/>`).join('');
+  const xt = [0, 15, 30, 45, 60].map(d => `<text x="${x(d)}" y="${H - 8}" text-anchor="${d === 0 ? 'start' : d === SALT_HORIZON ? 'end' : 'middle'}">${d === 0 ? 'today' : 'day ' + d}</text>`).join('');
+  const lines = series.map(([k, c]) => `<path d="${path(k)}" fill="none" stroke="${c}" stroke-width="${k === 'saqi' ? 3 : 2}" stroke-linejoin="round"/>`).join('');
+  const marks = series.map(([k, c]) => S[k].crossDay ? `<circle cx="${x(S[k].crossDay)}" cy="${y(thr)}" r="4.5" fill="${c}"/>` : '').join('');
+  return `<svg class="salt-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Projected root-zone ECe over 60 days for fixed habit, weather-only and Saqi">
+    <g class="axis">${ticks}${xt}</g>
+    <line x1="${L}" x2="${W - R}" y1="${y(thr)}" y2="${y(thr)}" class="thr"/>
+    <text x="${W - R}" y="${y(thr) - 5}" text-anchor="end" class="thr-lbl">${esc(r.crop.name)} yield-loss threshold ${thr} dS/m</text>
+    ${lines}${marks}</svg>
+    <div class="salt-legend">${series.map(([k, c, n]) => `<span><i style="background:${c}"></i>${n}</span>`).join('')}</div>`;
+}
+function renderSaltForecast() {
+  const box = $('#saltChart'); if (!box || !results.length) return;
+  const sel = $('#saltValve');
+  if (saltValveIdx >= results.length) saltValveIdx = 0;
+  if (sel) {
+    sel.innerHTML = results.map(r => `<option value="${r.bi}"${r.bi === saltValveIdx ? ' selected' : ''}>Valve ${r.bi + 1} · ${esc(r.b.name)}</option>`).join('');
+    sel.onchange = () => { saltValveIdx = +sel.value; renderSaltForecast(); };
+  }
+  const r = results[saltValveIdx], S = r.salt, thr = r.crop.ecThr;
+  const line = (k, n) => {
+    const f = S[k];
+    const when = f.crossDay ? `<b class="bad">crosses ${thr} dS/m on day ${f.crossDay}</b>` : (f.startAbove ? (f.endECe < S.startECe ? '<b class="good">flushing salt down</b>' : '<b class="bad">stays above threshold</b>') : '<b class="good">stays below threshold</b>');
+    return `<li><b>${n}</b> (${fmt(S.m3[k])} m³): ${when} · ECe day 60 <b class="mono">${fmt(f.endECe, 1)}</b> dS/m · est. salt-limited yield <b>${pct(f.meanY)}</b></li>`;
+  };
+  const vsHabit = S.m3.habit - S.m3.saqi, flushExtra = S.m3.saqi - S.m3.wxOnly;
+  const takeaway = `<div><strong>Next 60 days:</strong> Saqi ${vsHabit >= 0 ? `uses <b>${fmt(vsHabit)} m³ less</b> than the fixed habit (${pct(S.m3.habit > 0 ? vsHabit / S.m3.habit : 0)})` : `adds <b>${fmt(-vsHabit)} m³</b> over the habit to stop heat and salt stress`}; the extra <b>${fmt(Math.max(0, flushExtra))} m³</b> over weather-only is the salt flush that keeps the root zone ${S.saqi.crossDay ? 'as low as drainage allows' : 'under the yield-loss line'}${(() => { const v = (S.saqi.meanY - S.wxOnly.meanY) * weeklyRevenue(r.crop, r.b.area, SALT_HORIZON) - Math.max(0, flushExtra) * (+state.water.cost || 0); return v > 0 ? `, protecting an est. <b>${fmt(v)} AED</b> of crop vs weather-only` : ''; })()}.</div>`;
+  $('#saltStory').innerHTML = takeaway + `<ul class="salt-list">${line('saqi', 'Saqi')}${line('wxOnly', 'Weather-only')}${line('habit', 'Fixed habit')}</ul>`;
+  box.innerHTML = saltChartSvg(r);
+  $('#saltNote').innerHTML = `Start ECe ${fmt(S.startECe, 1)} dS/m (${S.startAssumed ? '<b>assumed</b> 80% of crop threshold; enable the soil sensor in Soil sensor to start from a measured value' : 'measured soil sensor'}). Days 1–${wx.days.length} use the forecast, then monthly climate ET₀ (<b>simulated</b>). Daily salt mass balance: water ${state.water.ec ? fmt(+state.water.ec, 1) : '–'} dS/m in, drainage out (capped by ${esc(state.drainage || 'good')} drainage); root depth ${r.crop.rootM} m (FAO-56); equilibrium matches FAO-29. Yield excludes water-stress loss.`;
 }
 
 /* ---------- Voice ---------- */
@@ -535,7 +655,7 @@ function renderHomeSim() {
   if ($('#resTitle')) $('#resTitle').textContent = saved ? 'Water saved vs. guesswork' : 'Yield protected in extreme heat';
   if ($('#resSub')) $('#resSub').textContent = saved
     ? `A fixed 240-min habit uses ${fmt(d.traditionalLitres)} L on 2 ha. Saqi gives ${fmt(d.smartLitres)} L: crop ET₀ (${d.et0} mm/d) + exact salt flush.`
-    : `A fixed 240-min habit (${fmt(d.traditionalLitres)} L) under-waters today (${d.habitYieldPct}% est. yield). Saqi increases run time to stop stress.`;
+    : `A fixed 240-min habit (${fmt(d.traditionalLitres)} L) under-waters today (${d.habitYieldPct}% est. yield over 90 days). Saqi increases run time to stop stress.`;
   $('#resSavedPct').textContent = saved ? `${d.savedPct}%` : `+${Math.abs(d.savedPct)}%`;
   if ($('#resPctLabel')) $('#resPctLabel').textContent = saved ? 'water saved' : 'heat/salt buffer';
   $('#resSavedL').textContent = saved ? fmt(absSaved) + ' L' : fmt(d.smartLitres) + ' L';
@@ -550,7 +670,7 @@ function renderHomeSim() {
     (simCond.moisture < 7 ? ' (+dry sandy soil deficit factor)' : '') +
     (simCond.temperature >= 45 ? ' + 10% heatwave buffer' : '') +
     ` with ${d.flushPct}% FAO-29 salt flush at ECw ${ecw.toFixed(1)} dS/m.`;
-  $('#simRisk').textContent = `${d.stressRisk} stress risk (${d.smartYieldPct}% est. yield)`;
+  $('#simRisk').textContent = `${d.stressRisk} stress risk (${d.smartYieldPct}% est. yield over 90 days)`;
   $('#simLitres').textContent = `${fmt(d.smartLitres)} L today (Weather-only: ${fmt(d.weatherOnlyLitres)} L)`;
 
   $('#cmpTradL').textContent = fmt(d.traditionalLitres) + ' L';
@@ -563,7 +683,7 @@ function renderHomeSim() {
   $('#cmpSavedPct').textContent = saved ? `${d.savedPct}%` : `+${Math.abs(d.savedPct)}%`;
   if ($('#cmpSavedNote')) $('#cmpSavedNote').innerHTML = saved
     ? `<span id="cmpSavedL">${fmt(absSaved)}</span> litres stay available vs. habit, while protecting salt balance vs. weather-only.`
-    : `<span id="cmpSavedL">${fmt(absSaved)}</span> extra litres prevent crop collapse when 240-min habit under-waters (${d.habitYieldPct}% est. yield).`;
+    : `<span id="cmpSavedL">${fmt(absSaved)}</span> extra litres stop heat and salt stress when the 240-min habit under-waters (${d.habitYieldPct}% est. yield over 90 days).`;
   const etBadge = $('#simEt0Badge');
   if (etBadge) {
     const todayLive = wx?.days?.[0];

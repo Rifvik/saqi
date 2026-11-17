@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
 from ai_http import (  # noqa: E402
     RATE_LIMIT_PER_MIN,
     RateLimiter,
+    drain_body,
     get_cached_service,
     send_error,
     send_options,
@@ -49,6 +50,7 @@ class _AiHandlerBase(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if "POST" not in self.allowed_methods:
+            drain_body(self)
             return send_error(self, 405, "method_not_allowed", f"Use {', '.join(self.allowed_methods)} on this endpoint.")
         return serve_ai_post(self, self.route_name, self._service(), self._limiter())
 

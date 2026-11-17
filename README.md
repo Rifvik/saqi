@@ -3,6 +3,36 @@
 > **Salt-smart irrigation decision tool built for UAE & Gulf desert growers.**  
 > Zero build step · Plain HTML, CSS & vanilla JavaScript · Works on any phone or desktop browser.
 
+**Live app:** https://saqi-gamma.vercel.app/ · **Demo video:** _[add link here]_ · **Hackathon:** Breaking Bytes Ch. 1 (GDG on Campus BITS Pilani Dubai), track **Desert AgriTech**, problem **A-001 Smart Farming for the Desert**
+
+## At a glance (for judges)
+
+**Problem inside the problem.** Desert farms irrigate with brackish well water on a fixed timer. That habit wastes water in cool months. In hot months the salt it leaves behind builds up around the roots and silently cuts yields. Growers pour extra water to "flush salt" by guesswork. And the owner who decides is usually not the worker who opens the valve, who may not read Arabic or English.
+
+**Decision Saqi makes:** *how many minutes to run each valve tonight, and when*. That includes the exact salt flush, and it's delivered as a voice note, an SMS/WhatsApp message and a QR code in Urdu, Hindi, Bengali, Arabic or English.
+
+**Why it beats the grower's guess (shown in the app):**
+- Every plan is compared with the farmer's fixed habit and with a weather-only app, in m³, AED and estimated yield.
+- A **60-day root-zone salt forecast** shows the day each strategy starts costing yield.
+- On the default farm with live November weather, Saqi uses ~35% less water than the habit and stays under every crop's salt threshold. Weather-only crosses the tomato threshold within a week.
+
+**Features:** Today's per-valve plan with a likely-minutes range · "Why this runtime?" breakdown · 7-day savings vs guesswork · 60-day salt forecast · 3-tap EC-pen update · worker voice note / SMS / WhatsApp / QR in 5 languages · offline / airplane mode · drip clog and leak detection · water-mix optimiser (RO + brackish) · soil-sensor salt bias check · what-to-plant suitability · water sharing between neighbours · adviser triage across farms · farm map with area tool · Saqi AI assistant and 1-page PDF report (Gemini, optional).
+
+**How the predictions work:** FAO-56 Penman-Monteith ET₀ (live, Open-Meteo) × FAO-56 crop coefficients. Salt flush via FAO-29 Rhoades leaching, capped by drainage. A daily root-zone salt balance whose equilibrium equals FAO-29. Maas–Hoffman salt yield loss and FAO-33 Ky water stress. Runtime ranges come from ET₀ / EC-pen / efficiency error. The offline Hargreaves ET₀ is calibrated against past live forecasts. **About → Live model checks** re-validates these on the user's data each time (e.g. raw Hargreaves vs live Penman-Monteith ≈ 23% error, 8% after calibration; salt model vs FAO-29 within 1%). Full equations: section 5.
+
+**Data: real vs realistic.**
+- *Real:* live weather/ET₀ (Open-Meteo), FAO crop and salt-tolerance constants.
+- *Realistic synthetic, labelled in the app:* flow-meter logs, scenario weeks, adviser farms.
+- *Illustrative:* yields and prices.
+- *Assumed and labelled:* uncertainty ranges and the start salt level when there is no sensor.
+
+**Desert rules.**
+- Water: night scheduling, minimum flush, leak/clog alerts, sharing.
+- Weak connectivity: works offline as a PWA with a cached or calibrated forecast; SMS / voice / QR handoff.
+- Affordable: free, no account, phone-only start; an optional EC pen is ~55 AED.
+
+**Tech stack:** HTML/CSS/vanilla JS (no build step) · Leaflet map · offline QR · Web Speech · service worker PWA · Python serverless (`/api/ai/*` on Vercel) with Google Gemini (optional, server-side key) · Node `node:test` + Python `unittest` tests.
+
 ---
 
 ## 1. The Core Idea (Why Saqi Exists)
@@ -166,6 +196,11 @@ Open **`http://127.0.0.1:8765/index.html`** in your browser.
 | **Modeled Root-Zone Salinity** | $EC_e = \dfrac{EC_w (1 + LF_{\text{eff}})}{5 \cdot LF_{\text{eff}}}$, where $LF_{\text{eff}} = \min(LF_{\text{raw}}, LF_{\text{drainMax}})$ | Steady-state drainage-constrained balance |
 | **Gross Irrigation & Minutes** | $D_{\text{gross}} = \dfrac{\max(0, \text{ET}_c - R_{\text{eff}}) \cdot f_{\text{heat}}}{(1 - LR)\cdot E_a}$, $\; t = \dfrac{D_{\text{gross}} \cdot A \cdot 10}{Q_{\text{block}}} \times 60$ | Single application of $LR$ and $E_a$ (no double counting); $Q_{\text{block}}$ in $\text{m}^3/\text{h}$ |
 | **Est. Relative Yield** | $Y_s = 1 - \frac{b}{100}(EC_e - EC_{e,\text{thr}})$ combined with water-deficit factor $1 - K_y(1 - \frac{I}{\text{ET}_c})$ | Maas–Hoffman & FAO Paper 33 |
+| **Transient Root-Zone Salt (60-day forecast)** | Daily bucket: $W_e \,\Delta EC_e = I\,EC_w - D \cdot \dfrac{5\,EC_e}{1+LF}$, $D = \min(\max(0, I-\text{ET}_c),\, LF_{\text{drainMax}} I)$, $W_e = 2\,\theta_{fc}\,z_{root}$ | Equilibrium equals FAO-29 Rhoades; root depth FAO-56 Table 22. `Engine.saltForecast()` |
+| **Runtime Uncertainty Range** | Same decision re-run at $\text{ET}_0(1\pm u)$, $EC_w \pm (2\% + 0.1)$, $E_a \pm 0.05$; $u$ = 10% live, 15% cached, 20% climate | `Engine.runtimeRange()`, assumptions in `UNCERTAINTY` (`js/data.js`) |
+| **Local Hargreaves Calibration** | $k = \sum \text{ET}_{0,PM} / \sum \text{ET}_{0,HG}$ learned from each live forecast, applied to the offline backup | `Engine.hargreavesBias()` |
+
+**Why the transient model matters:** salt does not reach steady state overnight. The weekly comparison and the 60-day card integrate the daily salt balance from a starting ECe (measured soil sensor if enabled, otherwise *assumed* 80% of the crop threshold), so the app can say *when* each strategy starts costing yield rather than assuming instant equilibrium.
 
 ---
 

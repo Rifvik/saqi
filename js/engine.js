@@ -43,6 +43,7 @@ const Engine = (() => {
   /* Leaching requirement (Rhoades, FAO-29): LR = ECw / (5·ECe_threshold − ECw).
    * Returns null when the water is too salty to keep the crop at full yield. */
   function leachingReq(ecw, ecThr) {
+    ecw = Math.max(0, +ecw || 0);
     const d = 5 * ecThr - ecw;
     if (d <= 0) return null;
     return ecw / d;
@@ -81,7 +82,7 @@ const Engine = (() => {
     const etc = kc * wx.et0;
     const effRain = wx.rain > 5 ? 0.8 * wx.rain : 0;
     const netNeed = Math.max(0, etc - effRain);
-    const Ea = SYSTEMS[block.system].eff;
+    const Ea = block.eaOverride || SYSTEMS[block.system].eff;
     const drainCap = Math.min(MAX_LR, maxDrainLF(drainage));
     const rawLR = leachingReq(ecw, crop.ecThr);
     const soilReclaim = (soilECe != null && soilECe > crop.ecThr) ? clamp((soilECe - crop.ecThr) * 0.025, 0, 0.15) : 0;
@@ -118,8 +119,9 @@ const Engine = (() => {
   }
 
   /* Estimated root-zone water & salinity balance over a period whose net crop ET need is etcMm.
-   * Effective leaching is bounded by drainage capacity; excess beyond drainage causes waterlogging, not salt removal. */
-  function evaluate(crop, block, m3, etcMm, ecw, drainage = 'good', prevECe = null) {
+   * Effective leaching is bounded by drainage capacity; excess beyond drainage causes waterlogging, not salt removal.
+   * transient = { ece, ys, startECe } from saltForecast replaces the instant steady-state ECe (salt takes weeks to build). */
+  function evaluate(crop, block, m3, etcMm, ecw, drainage = 'good', prevECe = null, transient = null) {
     const Ea = SYSTEMS[block.system].eff;
     const drainCap = maxDrainLF(drainage);
     const inf = block.area > 0 ? m3 / (block.area * 10) * Ea : 0;
@@ -129,11 +131,13 @@ const Engine = (() => {
     else { rawLF = 0.02; stress = clamp(1 - crop.ky * (1 - inf / etcMm), 0, 1); }
     const effLF = Math.max(Math.min(rawLF, drainCap), 0.02);
     const waterlogged = etcMm > 0 && rawLF > drainCap + 0.04;
-    const ece = rootzoneECe(ecw, effLF);
-    const ys = salinityYield(crop, ece);
+    const ece = transient ? transient.ece : rootzoneECe(ecw, effLF);
+    const ys = transient ? transient.ys : salinityYield(crop, ece);
     const waterlogFactor = waterlogged ? clamp(1 - 0.35 * (rawLF - drainCap), 0.65, 1) : 1;
     let saltTrend = 'stable';
-    if (drainage === 'poor' && ecw > 1.5) saltTrend = 'increasing';
+    // Rising only matters once it nears the crop threshold; settling up to a safe equilibrium is 'stable'.
+    if (transient) saltTrend = (ece > transient.startECe + 0.15 && ece > crop.ecThr * 0.9) ? 'increasing' : ece < transient.startECe - 0.15 ? 'flushing' : 'stable';
+    else if (drainage === 'poor' && ecw > 1.5) saltTrend = 'increasing';
     else if (prevECe != null) {
       if (ece > prevECe + 0.35) saltTrend = 'increasing';
       else if (ece < prevECe - 0.35) saltTrend = 'flushing';
@@ -215,6 +219,57 @@ const Engine = (() => {
     return { rows, traded: used, unused: S - used, totalShare: sum(farms.map(f => f.share)) };
   }
 
+  /* Prediction uncertainty: re-run the same decision at the low/high edges of the input error
+   * (ET0 forecast error, EC-pen accuracy, irrigation efficiency) so the farmer sees a range, not false precision. */
+  function runtimeRange(block, crop, wx, ecw, { uEt = 0.10, preHeat = false, drainage = 'good', soilECe = null } = {}) {
+    const U = (typeof UNCERTAINTY !== 'undefined') ? UNCERTAINTY : { ecwRel: 0.02, ecwAbs: 0.10, ea: 0.05 };
+    const dEc = ecw * U.ecwRel + U.ecwAbs;
+    const Ea = block.eaOverride || SYSTEMS[block.system].eff;
+    const lo = blockDecision({ ...block, eaOverride: Math.min(0.98, Ea + U.ea) }, crop, { ...wx, et0: wx.et0 * (1 - uEt) }, Math.max(0, ecw - dEc), preHeat, drainage, soilECe);
+    const hi = blockDecision({ ...block, eaOverride: Math.max(0.3, Ea - U.ea) }, crop, { ...wx, et0: wx.et0 * (1 + uEt) }, ecw + dEc, preHeat, drainage, soilECe);
+    return { loMin: lo.minutes, hiMin: hi.minutes, loM3: lo.m3, hiM3: hi.m3, uEt, dEc, dEa: U.ea };
+  }
+
+  function dayOfYear(dateStr) {
+    const d = new Date(dateStr + 'T12:00');
+    return Math.floor((d - new Date(d.getFullYear(), 0, 0)) / 864e5);
+  }
+
+  /* Local calibration of the offline Hargreaves ET0 backup against live FAO-56 Penman-Monteith forecasts
+   * (ratio of sums). Applied when the app later falls back to climate normals with no network. */
+  function hargreavesBias(days, lat) {
+    const ok = (days || []).filter(d => d && d.et0 > 0 && isFinite(d.tmax) && isFinite(d.tmin) && d.date);
+    if (ok.length < 3) return null;
+    const pm = sum(ok.map(d => d.et0));
+    const hg = sum(ok.map(d => hargreavesET0(d.tmax, d.tmin, lat, dayOfYear(d.date))));
+    if (!(hg > 0)) return null;
+    return clamp(pm / hg, 0.6, 1.5);
+  }
+
+  /* Transient root-zone salt balance (daily bucket), so salinity is a trajectory over weeks, not an instant
+   * steady state. Salt store = ECe × We, with We = 2 × water held at field capacity (ECsw ≈ 2·ECe, FAO-29).
+   * Drainage = water above crop ET, capped by the farm drainage class; drainage-water EC = 5·ECe/(1+LF),
+   * which makes the long-run equilibrium identical to the FAO-29 Rhoades steady state used elsewhere.
+   * applied[] = infiltrated water (mm/day); etc[] = net crop water need (mm/day). */
+  function saltForecast({ crop, ecw, startECe, applied, etc, drainage = 'good', fcPct = 10 }) {
+    const drainCap = maxDrainLF(drainage);
+    const We = 2 * (fcPct / 100) * (crop.rootM || 1) * 1000;
+    let ece = Math.max(0, +startECe || 0), crossDay = null;
+    const series = [];
+    for (let t = 0; t < applied.length; t++) {
+      const I = Math.max(0, applied[t] || 0), E = Math.max(0, etc[t] || 0);
+      const D = Math.min(Math.max(0, I - E), drainCap * I);
+      const lf = I > 0 ? D / I : 0;
+      const saltIn = I * ecw;
+      const saltOut = Math.min(D * 5 * ece / (1 + Math.max(lf, 0.02)), saltIn + ece * We);
+      ece = Math.max(0, ece + (saltIn - saltOut) / We);
+      series.push({ day: t + 1, ece, y: salinityYield(crop, ece), lf, waterlogged: I - E > drainCap * I + 0.04 * I });
+      if (crossDay === null && ece > crop.ecThr) crossDay = t + 1;
+    }
+    const meanY = series.length ? sum(series.map(p => p.y)) / series.length : 1;
+    return { series, crossDay, endECe: ece, meanY, startAbove: startECe > crop.ecThr, We };
+  }
+
   /* Homepage Zone A simulator powered by FAO-56 Hargreaves + FAO-29 Rhoades blockDecision (2 ha date palms, 40 m³/h, 240-min habit = 160,000 L). */
   const HOME_SCENARIOS = {
     normal:   { label: 'Normal Day',               conditions: { temperature: 34, ecw: 3.0, salinity: 3.0, moisture: 10, humidity: 35 } },
@@ -234,10 +289,17 @@ const Engine = (() => {
     const block = { crop: 'date', area: 2.0, day: 180, system: 'drip', flow: 40, habitMin: 240 };
     const dec = blockDecision(block, crop, { et0, rain: 0 }, waterEc, temperature >= 45, drainage);
     const wxOnly = weatherOnlyDecision(block, crop, { et0, rain: 0 });
-    const evalSmart = evaluate(crop, block, dec.m3, dec.etc, waterEc, drainage);
-    const evalWx = evaluate(crop, block, wxOnly.m3, dec.etc, waterEc, drainage);
+    // Each strategy is scored as if repeated for 90 days (one summer), using the transient salt balance (not instant steady state).
+    const startECe = crop.ecThr * 0.8, DAYS = 90;
+    const trans = m3 => {
+      const I = m3 / (block.area * 10) * dec.Ea;
+      const f = saltForecast({ crop, ecw: waterEc, startECe, applied: Array(DAYS).fill(I), etc: Array(DAYS).fill(dec.netNeed), drainage });
+      return { ece: f.endECe, ys: f.meanY, startECe };
+    };
+    const evalSmart = evaluate(crop, block, dec.m3, dec.etc, waterEc, drainage, null, trans(dec.m3));
+    const evalWx = evaluate(crop, block, wxOnly.m3, dec.etc, waterEc, drainage, null, trans(wxOnly.m3));
     const traditionalLitres = Math.round(block.habitMin / 60 * block.flow * 1000);
-    const evalHabit = evaluate(crop, block, traditionalLitres / 1000, dec.etc, waterEc, drainage);
+    const evalHabit = evaluate(crop, block, traditionalLitres / 1000, dec.etc, waterEc, drainage, null, trans(traditionalLitres / 1000));
 
     const flushPct = Math.round((1 / Math.max(0.1, 1 - dec.LR) - 1) * 100);
     const totalMinutes = Math.round((dec.minutes || 0) / 5) * 5;
@@ -326,6 +388,6 @@ const Engine = (() => {
   return { kcAt, stageName, seasonLength, hargreavesET0, leachingReq, rootzoneECe, salinityYield,
            resolveBlockFlow, blockDecision, weatherOnlyDecision, evaluate, flowCheck, dayLossPct,
            optimiseBlend, seasonPlan, shareWater, HOME_SCENARIOS, decideZoneA, metersScale,
-           rectPolygon, polygonStats, sum, clamp };
+           rectPolygon, polygonStats, runtimeRange, hargreavesBias, saltForecast, dayOfYear, sum, clamp };
 })();
 if (typeof module !== 'undefined') module.exports = Engine;

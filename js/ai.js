@@ -85,6 +85,13 @@ function buildFarmContext() {
         modeled_ece_week_dS_m: { saqi: aiR(r.eo.ece), weather_only: aiR(r.ew.ece), habit: aiR(r.eh.ece) },
         est_relative_yield_pct: { saqi: Math.round(r.eo.y * 100), weather_only: Math.round(r.ew.y * 100), habit: Math.round(r.eh.y * 100) },
         salt_trend: r.eo.saltTrend, drip_flow_status: r.flags.status, drip_flow_ratio_pct: Math.round((r.flags.ratio || 1) * 100),
+        tonight_minutes_likely_range: r.range && r.range.loMin != null ? [round5(r.range.loMin), round5(r.range.hiMin)] : null,
+        salt_forecast_60d: r.salt ? {
+          start_ece_dS_m: aiR(r.salt.startECe), start_is_assumed: r.salt.startAssumed,
+          day_crosses_threshold: { saqi: r.salt.saqi.crossDay, weather_only: r.salt.wxOnly.crossDay, habit: r.salt.habit.crossDay },
+          ece_day60_dS_m: { saqi: aiR(r.salt.saqi.endECe), weather_only: aiR(r.salt.wxOnly.endECe), habit: aiR(r.salt.habit.endECe) },
+          water_m3: { saqi: aiR(r.salt.m3.saqi, 0), weather_only: aiR(r.salt.m3.wxOnly, 0), habit: aiR(r.salt.m3.habit, 0) },
+        } : null,
       };
     });
     const tO = sum(results.map(r => r.weekOurs)), tW = sum(results.map(r => r.weekWeatherOnly)), tH = sum(results.map(r => r.weekHabit));

@@ -1112,3 +1112,15 @@ html[data-field-mode="1"] #today select,
 html[data-field-mode="1"] #today input{min-height:46px;font-size:1rem;font-weight:700}
 html[data-field-mode="1"] #today .today-why-fold{border:1px solid #94a3b8;border-radius:10px;padding:.35rem .6rem}
 
+
+/* Runtime range + 60-day salt forecast */
+.range-line{font-size:.82rem;margin:.15rem 0 .25rem}
+.range-line .muted{font-size:.74rem}
+.salt-chart{margin-top:.6rem}
+.salt-svg{width:100%;height:auto;display:block}
+.salt-svg .axis text,.salt-svg .thr-lbl{font-size:11px;fill:var(--muted-foreground)}
+.salt-svg .grid{stroke:var(--line);stroke-width:1}
+.salt-svg .thr{stroke:var(--destructive);stroke-width:1.4;stroke-dasharray:5 4;opacity:.7}
+.salt-legend{display:flex;gap:1rem;flex-wrap:wrap;font-size:.8rem;margin-top:.35rem}
+.salt-legend i{display:inline-block;width:14px;height:3px;border-radius:2px;margin-inline-end:.35rem;vertical-align:middle}
+.salt-list{margin:.4rem 0 0;padding-inline-start:1.1rem;font-size:.86rem;line-height:1.6}

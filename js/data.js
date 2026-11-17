@@ -3,18 +3,27 @@
  * Crop coefficients (Kc, stage lengths): FAO Irrigation & Drainage Paper 56 (arid-region values).
  * Salt tolerance (ECe threshold dS/m, % yield loss per dS/m): FAO Paper 29 (Ayers & Westcot), Maas-Hoffman model.
  * Ky (yield response to water): FAO Paper 33 / 66, approximate.
+ * rootM (effective root depth, m): FAO-56 Table 22, lower end of range (drip wets a shallower zone).
  * Yields & farm-gate prices: illustrative UAE values for a prototype — editable in code, not official statistics.
  */
 const CROPS = {
-  date:     { name: 'Date palm',              perennial: true,  kc: [0.90, 0.95, 0.95], stages: [0, 0, 365, 0],   ecThr: 4.0, ecSlope: 3.6,  ky: 0.8,  yield: 10,  price: 7.0, plantMonth: 1 },
-  tomato:   { name: 'Tomato',                 perennial: false, kc: [0.60, 1.15, 0.80], stages: [30, 40, 40, 25], ecThr: 2.5, ecSlope: 9.9,  ky: 1.05, yield: 45,  price: 2.5, plantMonth: 10 },
-  cucumber: { name: 'Cucumber',               perennial: false, kc: [0.60, 1.00, 0.75], stages: [20, 30, 40, 15], ecThr: 2.5, ecSlope: 13.0, ky: 1.1,  yield: 35,  price: 3.0, plantMonth: 10 },
-  lettuce:  { name: 'Lettuce',                perennial: false, kc: [0.70, 1.00, 0.95], stages: [20, 30, 15, 10], ecThr: 1.3, ecSlope: 13.0, ky: 1.0,  yield: 25,  price: 3.5, plantMonth: 11 },
-  barley:   { name: 'Barley (grain)',         perennial: false, kc: [0.30, 1.15, 0.25], stages: [15, 25, 50, 30], ecThr: 8.0, ecSlope: 5.0,  ky: 1.0,  yield: 4,   price: 1.2, plantMonth: 11 },
-  quinoa:   { name: 'Quinoa',                 perennial: false, kc: [0.50, 1.00, 0.70], stages: [25, 35, 40, 20], ecThr: 8.0, ecSlope: 3.5,  ky: 0.8,  yield: 2.5, price: 8.0, plantMonth: 11 },
-  sorghum:  { name: 'Sorghum (grain)',        perennial: false, kc: [0.30, 1.00, 0.55], stages: [20, 35, 40, 30], ecThr: 6.8, ecSlope: 16.0, ky: 0.9,  yield: 5,   price: 1.3, plantMonth: 3 },
-  bermuda:  { name: 'Bermuda grass (forage)', perennial: true,  kc: [0.90, 0.90, 0.90], stages: [0, 0, 365, 0],   ecThr: 6.9, ecSlope: 6.4,  ky: 1.0,  yield: 25,  price: 0.9, plantMonth: 1 },
-  alfalfa:  { name: 'Alfalfa',                perennial: true,  kc: [0.95, 0.95, 0.95], stages: [0, 0, 365, 0],   ecThr: 2.0, ecSlope: 7.3,  ky: 1.1,  yield: 18,  price: 1.3, plantMonth: 1 },
+  date:     { name: 'Date palm',              perennial: true,  kc: [0.90, 0.95, 0.95], stages: [0, 0, 365, 0],   ecThr: 4.0, ecSlope: 3.6,  ky: 0.8,  yield: 10,  price: 7.0, plantMonth: 1, rootM: 1.5 },
+  tomato:   { name: 'Tomato',                 perennial: false, kc: [0.60, 1.15, 0.80], stages: [30, 40, 40, 25], ecThr: 2.5, ecSlope: 9.9,  ky: 1.05, yield: 45,  price: 2.5, plantMonth: 10, rootM: 0.7 },
+  cucumber: { name: 'Cucumber',               perennial: false, kc: [0.60, 1.00, 0.75], stages: [20, 30, 40, 15], ecThr: 2.5, ecSlope: 13.0, ky: 1.1,  yield: 35,  price: 3.0, plantMonth: 10, rootM: 0.7 },
+  lettuce:  { name: 'Lettuce',                perennial: false, kc: [0.70, 1.00, 0.95], stages: [20, 30, 15, 10], ecThr: 1.3, ecSlope: 13.0, ky: 1.0,  yield: 25,  price: 3.5, plantMonth: 11, rootM: 0.3 },
+  barley:   { name: 'Barley (grain)',         perennial: false, kc: [0.30, 1.15, 0.25], stages: [15, 25, 50, 30], ecThr: 8.0, ecSlope: 5.0,  ky: 1.0,  yield: 4,   price: 1.2, plantMonth: 11, rootM: 1.0 },
+  quinoa:   { name: 'Quinoa',                 perennial: false, kc: [0.50, 1.00, 0.70], stages: [25, 35, 40, 20], ecThr: 8.0, ecSlope: 3.5,  ky: 0.8,  yield: 2.5, price: 8.0, plantMonth: 11, rootM: 1.0 },
+  sorghum:  { name: 'Sorghum (grain)',        perennial: false, kc: [0.30, 1.00, 0.55], stages: [20, 35, 40, 30], ecThr: 6.8, ecSlope: 16.0, ky: 0.9,  yield: 5,   price: 1.3, plantMonth: 3, rootM: 1.0 },
+  bermuda:  { name: 'Bermuda grass (forage)', perennial: true,  kc: [0.90, 0.90, 0.90], stages: [0, 0, 365, 0],   ecThr: 6.9, ecSlope: 6.4,  ky: 1.0,  yield: 25,  price: 0.9, plantMonth: 1, rootM: 1.0 },
+  alfalfa:  { name: 'Alfalfa',                perennial: true,  kc: [0.95, 0.95, 0.95], stages: [0, 0, 365, 0],   ecThr: 2.0, ecSlope: 7.3,  ky: 1.1,  yield: 18,  price: 1.3, plantMonth: 1, rootM: 1.0 },
+};
+
+/* Prediction uncertainty assumptions used for the runtime range on Today (assumed, documented, editable).
+ * ET0: day-1 Penman-Monteith forecast error ~10%; saved forecast ~15%; Hargreaves from climate normals ~20%.
+ * ECw: pocket EC pen accuracy ±2% of reading + 0.1 dS/m calibration drift. Ea: ±0.05 (field uniformity). */
+const UNCERTAINTY = {
+  et0: { live: 0.10, cached: 0.15, scenario: 0.10, clim: 0.20 },
+  ecwRel: 0.02, ecwAbs: 0.10, ea: 0.05,
 };
 
 const SYSTEMS = {
