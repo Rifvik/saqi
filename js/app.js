@@ -143,7 +143,7 @@ function dayOf(block, offset = 0) {
 }
 function weeklyRevenue(crop, area, nDays) { return crop.yield * 1000 * crop.price / Engine.seasonLength(crop) * nDays * area; }
 function computeAll() {
-  const ecw = +state.water.ec || 0; const n = wx.days.length; const thr = +state.heatThreshold;
+  const ecw = Math.min(25, Math.max(0, +state.water.ec || 0)); const n = wx.days.length; const thr = +state.heatThreshold; // ECw clamped to EC-pen range 0–25 dS/m
   const drainage = state.drainage || 'good';
   const prevECe = +state.sensor?.ece || null;
   const soilForFlush = state.sensor?.useForFlush ? prevECe : null;
@@ -387,7 +387,41 @@ function renderToday() {
   }
 
   renderSaltForecast();
+  renderModelChecks();
   renderVoice();
+}
+
+/* ---------- Live model checks (About → Validation) ---------- */
+function renderModelChecks() {
+  const box = $('#modelChecks'); if (!box || !wx || !results.length) return;
+  const loc = LOCATIONS[state.location] || LOCATIONS.alain;
+  const ecw = Math.max(0, +state.water.ec || 0);
+  const row = (ok, title, body) => `<div class="step"><span class="step-num">${ok === null ? 'ℹ️' : ok ? '✅' : '⚠️'}</span><div><b>${title}</b> ${body}</div></div>`;
+  const out = [];
+  // 1. Backtest offline Hargreaves against live Penman-Monteith for this week.
+  if (wx.kind === 'live' || wx.kind === 'cached') {
+    const errs = wx.days.filter(d => d.et0 > 0).map(d => Math.abs(Engine.hargreavesET0(d.tmax, d.tmin, loc.lat, doy(d.date)) - d.et0) / d.et0);
+    const k = Engine.hargreavesBias(wx.days, loc.lat) || 1;
+    const errsCal = wx.days.filter(d => d.et0 > 0).map(d => Math.abs(k * Engine.hargreavesET0(d.tmax, d.tmin, loc.lat, doy(d.date)) - d.et0) / d.et0);
+    const mape = sum(errs) / (errs.length || 1), mapeCal = sum(errsCal) / (errsCal.length || 1);
+    out.push(row(mapeCal < 0.2, 'Offline ET₀ backtest:', `raw Hargreaves vs live Penman-Monteith over ${errs.length} days = <b>${pct(mape)}</b> mean error; after local calibration ×${k.toFixed(2)} = <b>${pct(mapeCal)}</b> (in-sample; refreshed on every live fetch).`));
+  } else out.push(row(null, 'Offline ET₀ backtest:', 'needs one live forecast to compare against (currently using ' + esc(wx.kind === 'scenario' ? 'a synthetic scenario' : 'climate normals') + ').'));
+  // 2. Transient salt model must converge to the published FAO-29 steady state.
+  const crop = results[0].crop, lf = 0.2, N = 720;
+  const eq = Engine.saltForecast({ crop, ecw: Math.max(ecw, 0.5), startECe: 0.5, applied: Array(N).fill(6 / (1 - lf)), etc: Array(N).fill(6) }).endECe;
+  const ref = Engine.rootzoneECe(Math.max(ecw, 0.5), lf), eqErr = Math.abs(eq - ref) / ref;
+  out.push(row(eqErr < 0.02, 'Salt model vs FAO-29:', `2-year simulation at LF 20% settles at <b>${fmt(eq, 2)}</b> dS/m vs FAO-29 steady state <b>${fmt(ref, 2)}</b> dS/m (error ${pct(eqErr)}).`));
+  // 3. Water balance closes for every valve (LR and efficiency applied exactly once).
+  const closes = results.every(r => Math.abs(r.today.grossMm * (1 - r.today.LR) * r.today.Ea - r.today.netNeed * (r.today.preHeat ? 1.1 : 1)) < 1e-6);
+  out.push(row(closes, 'Water balance closes:', `gross × (1 − LR) × efficiency = crop need for all ${results.length} valves${closes ? '' : ' (check inputs)'}.`));
+  // 4. Does Saqi beat the grower's guess over 60 days?
+  const beats = results.filter(r => r.salt.m3.saqi <= r.salt.m3.habit * 1.001 && r.salt.saqi.meanY >= r.salt.habit.meanY - 0.005).length;
+  const protects = results.filter(r => r.salt.saqi.meanY > r.salt.habit.meanY + 0.005).length;
+  out.push(row(beats + protects === results.length, 'Beats the guess (60 days):', `on <b>${beats}</b> of ${results.length} valves Saqi uses less water than the fixed habit with equal or better yield${protects ? `; on <b>${protects}</b> it uses more water to stop heat/salt loss the habit causes` : ''}.`));
+  // 5. Input sanity.
+  const rawEc = +state.water.ec;
+  out.push(row(rawEc >= 0 && rawEc <= 20, 'Input check:', `water ECw ${fmt(rawEc, 1)} dS/m ${rawEc > 20 ? '(above EC-pen range: re-measure)' : rawEc < 0 ? '(negative: treated as 0)' : 'within EC-pen range'}; ${results.filter(r => r.today.invalidFlow).length} valve(s) missing flow.`));
+  box.innerHTML = out.join('');
 }
 
 /* ---------- 60-day salt forecast ---------- */

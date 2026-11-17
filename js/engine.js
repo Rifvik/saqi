@@ -43,6 +43,7 @@ const Engine = (() => {
   /* Leaching requirement (Rhoades, FAO-29): LR = ECw / (5·ECe_threshold − ECw).
    * Returns null when the water is too salty to keep the crop at full yield. */
   function leachingReq(ecw, ecThr) {
+    ecw = Math.max(0, +ecw || 0);
     const d = 5 * ecThr - ecw;
     if (d <= 0) return null;
     return ecw / d;

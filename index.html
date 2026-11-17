@@ -836,6 +836,30 @@
       </table>
     </div>
   </div>
+
+  <div class="card" id="methodology" style="margin-top:1.1rem">
+    <p class="section-kicker" style="margin-bottom:.3rem">Validation</p>
+    <h3>Live model checks (recomputed on your data)</h3>
+    <p class="muted" style="margin:.2rem 0 .7rem;font-size:.86rem">Every time the plan updates, Saqi re-tests its own models against live data and published equations.</p>
+    <div id="modelChecks" class="engine-steps"></div>
+  </div>
+
+  <div class="card" style="margin-top:1.1rem">
+    <p class="section-kicker" style="margin-bottom:.3rem">Methodology</p>
+    <h3>Every formula, its source, and what is assumed</h3>
+    <div class="tablewrap"><table>
+      <tr><th>Model</th><th>How Saqi computes it</th><th>Source</th></tr>
+      <tr><td>Reference ET₀</td><td>Live FAO-56 Penman-Monteith forecast; offline: Hargreaves from temperatures, calibrated ×k to past live forecasts</td><td>Open-Meteo; FAO-56 eq. 6 &amp; 52</td></tr>
+      <tr><td>Crop water need</td><td>ETc = Kc(stage, day) × ET₀ − effective rain (80% of rain &gt; 5 mm)</td><td>FAO-56 Tables 12 &amp; 17</td></tr>
+      <tr><td>Salt flush (leaching)</td><td>LR = ECw / (5·ECe<sub>thr</sub> − ECw), capped by drainage class</td><td>FAO-29 (Rhoades)</td></tr>
+      <tr><td>Gross water &amp; minutes</td><td>(ETc × heat buffer) / ((1 − LR) × Ea) × area ÷ block flow</td><td>FAO-56 / FAO-24 efficiencies</td></tr>
+      <tr><td>Root-zone salt over time</td><td>Daily salt mass balance in the root zone (water held = 2·θ<sub>fc</sub>·root depth); equilibrium equals FAO-29</td><td>FAO-29; FAO-56 Table 22 root depths</td></tr>
+      <tr><td>Yield effect</td><td>Maas–Hoffman salt loss × Ky water-deficit loss × waterlogging penalty</td><td>FAO-29; FAO-33 Ky</td></tr>
+      <tr><td>Runtime range</td><td>Same model at ET₀ ±10–20%, ECw ±(2% + 0.1 dS/m), Ea ±0.05 <span class="tag amber">assumed</span></td><td>Forecast &amp; EC-pen accuracy</td></tr>
+      <tr><td>Drip clog / leak</td><td>Flow ≤ 88% of expected for 2 days = clog; &gt; 112% = leak <span class="tag amber">assumed</span></td><td>Meter log (demo: synthetic)</td></tr>
+      <tr><td>Start salt level</td><td>Soil-sensor ECe if enabled, else 80% of crop threshold <span class="tag amber">assumed</span></td><td>—</td></tr>
+    </table></div>
+  </div>
 </section>
 
 <!-- AI ASSISTANT & REPORT -->
