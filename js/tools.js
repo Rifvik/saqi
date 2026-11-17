@@ -319,8 +319,8 @@ function riskColor(s) { return s >= 60 ? '#e0634e' : s >= 35 ? '#e0aa45' : '#57b
 let advLmap = null, advSatTile = null, advOsmTile = null, advSatActive = false, advGroup = null, advBounds = null;
 function refreshAdviserMap() {
   if (!advLmap) return;
-  advLmap.invalidateSize();
-  if (advBounds && advBounds.isValid()) advLmap.fitBounds(advBounds, { padding: [26, 26], maxZoom: 11 });
+  advLmap.invalidateSize(false);
+  if (advBounds && advBounds.isValid()) advLmap.fitBounds(advBounds, { padding: [26, 26], maxZoom: 11, animate: false });
 }
 function renderAdviser() {
   const allF = advFarms();
@@ -339,8 +339,8 @@ function renderAdviser() {
   } else {
     if (!$('#advLeaflet')) {
       advLmap = null;
-      $('#advMap').innerHTML = `<div class="row" style="justify-content:space-between;margin-bottom:.5rem">
-        <div class="row"><label style="margin:0">Region:</label><select id="advRegionSel" style="max-width:170px">${['All', 'Al Ain', 'Liwa', 'Al Dhaid', 'Madinat Zayed'].map(r => `<option value="${r}">${r === 'All' ? 'All regions (40)' : r}</option>`).join('')}</select></div>
+      $('#advMap').innerHTML = `<div class="row" style="justify-content:space-between;align-items:center;margin-bottom:.5rem">
+        <div class="row" style="flex-wrap:nowrap;align-items:center;gap:.45rem"><label for="advRegionSel" style="margin:0;white-space:nowrap">Region:</label><select id="advRegionSel" style="width:auto;min-width:165px">${['All', 'Al Ain', 'Liwa', 'Al Dhaid', 'Madinat Zayed'].map(r => `<option value="${r}">${r === 'All' ? 'All regions (40)' : r}</option>`).join('')}</select></div>
         <button type="button" class="btn sm ghost" id="advLayerBtn">${advSatActive ? '🛰️ Satellite' : '🗺️ Street'}</button>
       </div>
       <div id="advLeaflet" class="field-map adv-map" aria-label="UAE regional farm risk map"></div>
@@ -382,10 +382,10 @@ function renderAdviser() {
         iconSize: [18, 18],
         iconAnchor: [-6, 12],
       });
-      L.marker([f.lat, f.lon], { icon, interactive: false }).addTo(advGroup);
+      L.marker([f.lat, f.lon], { icon, interactive: false, zIndexOffset: 1000 - i * 20 }).addTo(advGroup);
     });
     advBounds = F.length ? L.latLngBounds(F.map(f => [f.lat, f.lon])) : L.latLngBounds([[22.7, 53.3], [25.7, 56.3]]);
-    if ($('#adviser')?.classList.contains('active')) setTimeout(refreshAdviserMap, 60);
+    if ($('#adviser')?.classList.contains('active')) refreshAdviserMap();
   }
   $('#advRegionSel').onchange = e => { advRegion = e.target.value; renderAdviser(); };
   $('#advTop').innerHTML = F.slice(0, 5).map((f, i) => `<div class="alert ${f.score >= 60 ? 'red' : f.score >= 35 ? 'amber' : 'green'}"><span class="alert-body"><b>${i + 1}. ${f.id}</b> · ${f.region} · ${CROPS[f.crop].name} · risk <b>${f.score}</b>

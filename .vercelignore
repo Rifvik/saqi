@@ -12,6 +12,7 @@ venv/
 .git/
 
 # Tests, docs & local OS launchers (never needed at Vercel runtime)
+docs/
 tests/
 start-saqi.bat
 start-saqi.sh

@@ -1,5 +1,5 @@
 /* Saqi service worker: app works fully offline after first visit. Network-first for app files, cache fallback. */
-const CACHE = 'saqi-v28';
+const CACHE = 'saqi-v29';
 const FILES = [
   './', 'index.html', 'styles.css', 'js/data.js', 'js/engine.js', 'js/tools.js',
   'js/app.js', 'js/ai.js', 'js/hero-cinema.js', 'js/shader-bg.js',
