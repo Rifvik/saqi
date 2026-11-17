@@ -46,7 +46,8 @@ function buildFarmContext() {
     drainage: { class: drainage, description: DRAINAGE[drainage]?.name || drainage, max_leaching_fraction_pct: Math.round((DRAINAGE[drainage]?.maxLF || 0) * 100) },
     soil_sensor: state.sensor ? {
       soil_type: SOILS[state.sensor.soil]?.name || state.sensor.soil, raw_reading_pct: aiR(+state.sensor.reading),
-      measured_soil_ece_dS_m: aiR(+state.sensor.ece), used_in_salt_flush: Boolean(state.sensor.useForFlush),
+      measured_soil_ece_dS_m: measuredSoilECe() == null ? null : aiR(measuredSoilECe()), soil_ece_source: state.sensor.eceSource === 'measured' ? 'measured' : 'modeled by Saqi',
+      used_in_salt_flush: Boolean(state.sensor.useForFlush && measuredSoilECe()),
     } : null,
     start_time: state.startTime,
     valves: [],

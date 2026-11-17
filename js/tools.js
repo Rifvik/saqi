@@ -59,10 +59,27 @@ function renderBlend() {
 }
 
 /* ---------- Sensor check ---------- */
+/* Modeled root-zone ECe: Saqi's daily salt balance after 30 days of the farmer's fixed habit
+ * (same transient model as the 60-day forecast; avoids the unrealistic instant steady state). */
+const SENSOR_MODEL_DAY = 30;
+function modeledSoilECeFor(r) {
+  const pts = r?.salt?.habit?.series;
+  return pts && pts.length ? pts[Math.min(SENSOR_MODEL_DAY, pts.length) - 1].ece : null;
+}
 function renderSensor() {
   const s = state.sensor, soil = SOILS[s.soil] || SOILS.sand;
   const sel = $('#snSoil'); if (!sel.options.length) sel.innerHTML = Object.entries(SOILS).map(([k, v]) => `<option value="${k}">${v.name}</option>`).join('');
-  const app = +s.reading, bias = s.k * s.ece * app / 10, tru = Math.max(0, app - bias);
+  if (!(+s.block < state.blocks.length)) s.block = 0;
+  const bsel = $('#snBlock');
+  if (bsel) { bsel.innerHTML = state.blocks.map((b, i) => `<option value="${i}">Valve ${i + 1} · ${esc(b.name)}</option>`).join(''); bsel.value = String(+s.block || 0); }
+  const measured = s.eceSource === 'measured';
+  const r = results[+s.block || 0];
+  const modeledEce = modeledSoilECeFor(r);
+  const ece = measured ? (+s.ece || 0) : (modeledEce ?? 0);
+  if ($('#snEceField')) $('#snEceField').hidden = !measured;
+  if ($('#snFlushRow')) $('#snFlushRow').hidden = !measured; // only a measured reading may change tonight's flush
+  if (!measured && $('#calEce') && document.activeElement !== $('#calEce')) $('#calEce').value = (+ece).toFixed(1);
+  const app = +s.reading, bias = s.k * ece * app / 10, tru = Math.max(0, app - bias);
   const refill = soil.fc - 0.5 * (soil.fc - soil.wp);
   const dec = v => v < refill ? { t: 'IRRIGATE NOW', c: 'bad' } : v > soil.fc ? { t: 'Too wet: skip', c: 'warn' } : { t: 'Wait', c: 'good' };
   const da = dec(app), dt = dec(tru);
@@ -70,21 +87,25 @@ function renderSensor() {
   const scale = soil.fc * 1.6, P = v => Math.min(100, v / scale * 100);
   const gauge = (v, color) => `<div style="position:relative;height:22px;background:linear-gradient(90deg,rgba(220,76,62,0.45) 0 ${P(soil.wp)}%,rgba(232,185,78,0.42) ${P(soil.wp)}% ${P(refill)}%,rgba(102,194,142,0.42) ${P(refill)}% ${P(soil.fc)}%,rgba(152,207,240,0.42) ${P(soil.fc)}%);border-radius:8px">
     <div style="position:absolute;left:calc(${P(v)}% - 2px);top:-3px;width:4px;height:28px;background:${color};border-radius:2px"></div></div>`;
-  $('#sensorOut').innerHTML = `
+  const eceLine = measured
+    ? `<div class="alert blue"><span class="alert-body">Soil salinity: <b>${fmt(ece, 1)} dS/m</b>, <b>measured</b>.${modeledEce != null ? ` For comparison, Saqi's model for ${esc(r.b.name)} gives ${fmt(modeledEce, 1)} dS/m.` : ''}</span></div>`
+    : `<div class="alert blue"><span class="alert-body">Soil salinity: <b>${fmt(ece, 1)} dS/m</b>, <b>modeled</b>: where ${r ? esc(r.b.name) : 'this block'}'s root zone is after ${SENSOR_MODEL_DAY} days of the fixed ${r ? r.b.habitMin + '-minute ' : ''}habit with ${fmt(+state.water.ec, 1)} dS/m water (Saqi's daily salt balance, from an <b>assumed</b> start of ${r ? fmt(r.salt.startECe, 1) : '–'} dS/m). No soil probe needed. Switch to "Measured" if you have a reading.</span></div>`;
+  $('#sensorOut').innerHTML = eceLine + `
     <div class="grid g2">
-      <div><div class="muted">Sensor says</div><div class="big" style="color:var(--muted)">${fmt(app, 1)}%</div><div class="${da.c}"><b>${da.t}</b></div></div>
+      <div><div class="muted">Sensor says</div><div class="big" style="color:var(--muted-foreground)">${fmt(app, 1)}%</div><div class="${da.c}"><b>${da.t}</b></div></div>
       <div><div class="muted">Salt-corrected</div><div class="big">${fmt(tru, 1)}%</div><div class="${dt.c}"><b>${dt.t}</b></div></div>
     </div>
     <div style="margin:.8rem 0">${gauge(app, 'var(--muted-foreground)')}<div style="height:6px"></div>${gauge(tru, 'var(--water)')}
     <div class="muted" style="display:flex;justify-content:space-between"><span>dry (wilting ${soil.wp}%)</span><span>refill ${fmt(refill, 0)}%</span><span>full (field capacity ${soil.fc}%)</span></div></div>
     ${dt.c === 'bad' && da.c !== 'bad'
-      ? `<div class="alert red">⚠ <b>Salt is fooling the sensor.</b> It reads ${fmt(bias, 1)} points too wet, so the grower would wait while the roots are already below the refill point (${fmt(refill, 1)}%).</div>`
+      ? `<div class="alert red"><span class="alert-body">⚠ <b>Salt is fooling the sensor.</b> It reads ${fmt(bias, 1)} points too wet, so the grower would wait while the roots are already below the refill point (${fmt(refill, 1)}%).</span></div>`
       : da.t !== dt.t
-        ? `<div class="alert amber">⚠ <b>Salt is fooling the sensor.</b> It reads ${fmt(bias, 1)} points too wet, making the soil look over-saturated when it is actually only ${fmt(tru - refill, 1)} points above the refill point.</div>`
-        : `<div class="alert green">The sensor's decision is right here. The salt error (${fmt(bias, 1)} points) does not change it.</div>`}
+        ? `<div class="alert amber"><span class="alert-body">⚠ <b>Salt is fooling the sensor.</b> It reads ${fmt(bias, 1)} points too wet, making the soil look over-saturated when it is actually only ${fmt(tru - refill, 1)} points above the refill point.</span></div>`
+        : `<div class="alert green"><span class="alert-body">The sensor's decision is right here. The salt error (${fmt(bias, 1)} points) does not change it.</span></div>`}
     ${tru < soil.fc ? `<p>To refill ${s.depth} cm of root zone: <b>${fmt(mm, 1)} mm = ${fmt(mm, 1)} litres per m²</b> (before salt flush and system losses).</p>` : ''}
-    ${state.drainage === 'poor' ? `<div class="alert amber">⚠ <b>Poor drainage warning:</b> Excess leaching water cannot drain below roots here; avoid aggressive flushing until subsurface drainage improves.</div>` : ''}
-    <p class="muted">Model: capacitive sensors pick up the soil water's electrical conductivity as extra "wetness" (bias ≈ k × ECe × reading / 10). Root-zone ECe should be checked or modeled carefully rather than assumed equal to ECsw/2. Sandy soil holds very little water (≈ ${soil.fc - soil.wp} points available), so a 2–3 point error is a big part of the plant's reserve.</p>`;
+    ${state.drainage === 'poor' ? `<div class="alert amber"><span class="alert-body">⚠ <b>Poor drainage warning:</b> Excess leaching water cannot drain below roots here; avoid aggressive flushing until subsurface drainage improves.</span></div>` : ''}
+    <p class="muted"><b>How the correction works:</b> salt makes soil water conduct electricity, and cheap capacitive sensors mistake that for extra water. The saltier and wetter the soil, the bigger the error, so Saqi subtracts k × soil ECe × reading ÷ 10. k = ${fmt(s.k, 2)} is ${+s.k === 0.35 ? 'an <b>assumed</b> default' : 'calibrated for this farm'}; one oven-dried soil sample (below) sets it for your sensor. Sandy soil holds only about ${soil.fc - soil.wp} points of usable water, so a 2–3 point error is a big part of the plant's reserve.</p>
+    <p class="muted"><b>How this relates to Today:</b> Today's runtimes come from weather, crop and water salt. This page is a field cross-check: if the corrected reading says "Irrigate now" before tonight's slot, the root zone is drier than planned. Give a short refill (amount above) and check the drip lines.</p>`;
 }
 
 /* ---------- Drip health ---------- */
@@ -483,7 +504,8 @@ function initTools() {
   $('#calBtn').onclick = () => {
     const sv = +$('#calSensor').value, tv = +$('#calTrue').value, ec = +$('#calEce').value;
     if (!(sv > 0 && ec > 0) || tv > sv) { toast('Need sensor > true value and ECe > 0'); return; }
-    state.sensor.k = +((sv - tv) / (ec * sv / 10)).toFixed(3); state.sensor.ece = ec;
+    state.sensor.k = +((sv - tv) / (ec * sv / 10)).toFixed(3);
+    if (state.sensor.eceSource === 'measured') state.sensor.ece = ec;
     save(); renderAll(); toast('k calibrated to ' + state.sensor.k);
   };
   $('#shLink').onchange = e => { state.share.link = e.target.checked; save(); renderAll(); };
