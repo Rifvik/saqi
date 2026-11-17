@@ -316,17 +316,77 @@ function advFarms() {
   return ADV;
 }
 function riskColor(s) { return s >= 60 ? '#e0634e' : s >= 35 ? '#e0aa45' : '#57b887'; }
+let advLmap = null, advSatTile = null, advOsmTile = null, advSatActive = false, advGroup = null, advBounds = null;
+function refreshAdviserMap() {
+  if (!advLmap) return;
+  advLmap.invalidateSize();
+  if (advBounds && advBounds.isValid()) advLmap.fitBounds(advBounds, { padding: [26, 26], maxZoom: 11 });
+}
 function renderAdviser() {
   const allF = advFarms();
   const F = advRegion === 'All' ? allF : allF.filter(f => f.region === advRegion);
   const w = 480, h = 360, la0 = 22.7, la1 = 25.7, lo0 = 53.3, lo1 = 56.3;
   const X = lo => 20 + (lo - lo0) / (lo1 - lo0) * (w - 40), Y = la => 20 + (la1 - la) / (la1 - la0) * (h - 40);
-  $('#advMap').innerHTML = `<div class="row" style="margin-bottom:.5rem"><label style="margin:0">Region:</label><select id="advRegionSel" style="max-width:170px">${['All', 'Al Ain', 'Liwa', 'Al Dhaid', 'Madinat Zayed'].map(r => `<option value="${r}" ${r === advRegion ? 'selected' : ''}>${r === 'All' ? 'All regions (40)' : r}</option>`).join('')}</select></div>
-    <svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;background:var(--map-bg);border:1px solid var(--map-border);border-radius:16px">
-    ${[['Al Ain', 24.2, 55.7], ['Liwa', 23.1, 53.8], ['Al Dhaid', 25.3, 55.9], ['Madinat Zayed', 23.7, 53.7]].map(g => `<text x="${X(g[2])}" y="${Y(g[1]) - 34}" font-size="12" text-anchor="middle" fill="var(--chart-axis)">${g[0]}</text>`).join('')}
-    ${F.slice().reverse().map(f => `<circle cx="${X(f.lon)}" cy="${Y(f.lat)}" r="${5 + f.score / 15}" fill="${riskColor(f.score)}" opacity=".9" stroke="var(--background)"><title>${f.id} ${CROPS[f.crop].name} · risk ${f.score}</title></circle>`).join('')}
-    ${F.slice(0, 5).map((f, i) => `<text x="${X(f.lon) + 9}" y="${Y(f.lat) + 4}" font-size="11" font-weight="700" fill="var(--chart-text)">${i + 1}</text>`).join('')}</svg>
-    <div class="row" style="margin-top:.4rem"><span class="tag red">High ≥ 60</span><span class="tag amber">Medium 35–59</span><span class="tag green">Watch &lt; 35</span></div>`;
+
+  if (typeof L === 'undefined') {
+    advLmap = null;
+    $('#advMap').innerHTML = `<div class="row" style="margin-bottom:.5rem"><label style="margin:0">Region:</label><select id="advRegionSel" style="max-width:170px">${['All', 'Al Ain', 'Liwa', 'Al Dhaid', 'Madinat Zayed'].map(r => `<option value="${r}" ${r === advRegion ? 'selected' : ''}>${r === 'All' ? 'All regions (40)' : r}</option>`).join('')}</select></div>
+      <svg viewBox="0 0 ${w} ${h}" width="100%" style="max-width:${w}px;background:var(--map-bg);border:1px solid var(--map-border);border-radius:16px">
+      ${[['Al Ain', 24.2, 55.7], ['Liwa', 23.1, 53.8], ['Al Dhaid', 25.3, 55.9], ['Madinat Zayed', 23.7, 53.7]].map(g => `<text x="${X(g[2])}" y="${Y(g[1]) - 34}" font-size="12" text-anchor="middle" fill="var(--chart-axis)">${g[0]}</text>`).join('')}
+      ${F.slice().reverse().map(f => `<circle cx="${X(f.lon)}" cy="${Y(f.lat)}" r="${5 + f.score / 15}" fill="${riskColor(f.score)}" opacity=".9" stroke="var(--background)"><title>${f.id} ${CROPS[f.crop].name} · risk ${f.score}</title></circle>`).join('')}
+      ${F.slice(0, 5).map((f, i) => `<text x="${X(f.lon) + 9}" y="${Y(f.lat) + 4}" font-size="11" font-weight="700" fill="var(--chart-text)">${i + 1}</text>`).join('')}</svg>
+      <div class="row" style="margin-top:.4rem"><span class="tag red">High ≥ 60</span><span class="tag amber">Medium 35–59</span><span class="tag green">Watch &lt; 35</span></div>`;
+  } else {
+    if (!$('#advLeaflet')) {
+      advLmap = null;
+      $('#advMap').innerHTML = `<div class="row" style="justify-content:space-between;margin-bottom:.5rem">
+        <div class="row"><label style="margin:0">Region:</label><select id="advRegionSel" style="max-width:170px">${['All', 'Al Ain', 'Liwa', 'Al Dhaid', 'Madinat Zayed'].map(r => `<option value="${r}">${r === 'All' ? 'All regions (40)' : r}</option>`).join('')}</select></div>
+        <button type="button" class="btn sm ghost" id="advLayerBtn">${advSatActive ? '🛰️ Satellite' : '🗺️ Street'}</button>
+      </div>
+      <div id="advLeaflet" class="field-map adv-map" aria-label="UAE regional farm risk map"></div>
+      <div class="row" style="margin-top:.45rem"><span class="tag red">High ≥ 60</span><span class="tag amber">Medium 35–59</span><span class="tag green">Watch &lt; 35</span></div>`;
+      advLmap = L.map('advLeaflet', { zoomControl: true }).setView([24.2, 54.8], 7);
+      advOsmTile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 18, attribution: '&copy; OpenStreetMap'
+      });
+      advSatTile = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 18, attribution: 'Tiles &copy; Esri'
+      });
+      (advSatActive ? advSatTile : advOsmTile).addTo(advLmap);
+      advGroup = L.layerGroup().addTo(advLmap);
+      $('#advLayerBtn').onclick = () => {
+        if (!advLmap) return;
+        advSatActive = !advSatActive;
+        if (advSatActive) { advLmap.removeLayer(advOsmTile); advSatTile.addTo(advLmap); $('#advLayerBtn').textContent = '🛰️ Satellite'; }
+        else { advLmap.removeLayer(advSatTile); advOsmTile.addTo(advLmap); $('#advLayerBtn').textContent = '🗺️ Street'; }
+      };
+    }
+    $('#advRegionSel').value = advRegion;
+    advGroup.clearLayers();
+    F.slice().reverse().forEach(f => {
+      const m = L.circleMarker([f.lat, f.lon], {
+        radius: 5.5 + f.score / 16,
+        color: '#ffffff',
+        weight: 1.8,
+        fillColor: riskColor(f.score),
+        fillOpacity: 0.92,
+      });
+      m.bindTooltip(`${f.id} · ${CROPS[f.crop].name} · risk ${f.score}`);
+      m.bindPopup(`<b>${f.id}</b> · ${f.region}<br>${CROPS[f.crop].name} · Risk <b>${f.score}</b><br><b>Likely cause:</b> ${esc(f.cause)}<br><small>${esc(f.action)}</small>`);
+      m.addTo(advGroup);
+    });
+    F.slice(0, 5).forEach((f, i) => {
+      const icon = L.divIcon({
+        className: 'adv-rank-pin',
+        html: `<span>${i + 1}</span>`,
+        iconSize: [18, 18],
+        iconAnchor: [-6, 12],
+      });
+      L.marker([f.lat, f.lon], { icon, interactive: false }).addTo(advGroup);
+    });
+    advBounds = F.length ? L.latLngBounds(F.map(f => [f.lat, f.lon])) : L.latLngBounds([[22.7, 53.3], [25.7, 56.3]]);
+    if ($('#adviser')?.classList.contains('active')) setTimeout(refreshAdviserMap, 60);
+  }
   $('#advRegionSel').onchange = e => { advRegion = e.target.value; renderAdviser(); };
   $('#advTop').innerHTML = F.slice(0, 5).map((f, i) => `<div class="alert ${f.score >= 60 ? 'red' : f.score >= 35 ? 'amber' : 'green'}"><span class="alert-body"><b>${i + 1}. ${f.id}</b> · ${f.region} · ${CROPS[f.crop].name} · risk <b>${f.score}</b>
       <br><b>Likely cause: ${f.cause}.</b> ${f.action}

@@ -118,9 +118,10 @@ class SaqiHandler(SimpleHTTPRequestHandler):
 
 def make_server(host: str, port: int, service=None, limiter=None) -> ThreadingHTTPServer:
     import socket
-    cls = ThreadingHTTPServer
+    attrs = {"allow_reuse_address": os.name != "nt"}
     if ":" in host:
-        cls = type("IPv6ThreadingHTTPServer", (ThreadingHTTPServer,), {"address_family": socket.AF_INET6})
+        attrs["address_family"] = socket.AF_INET6
+    cls = type("SaqiThreadingHTTPServer", (ThreadingHTTPServer,), attrs)
     handler = type("BoundSaqiHandler", (SaqiHandler,), {"service": service or build_service(),
                                                         "limiter": limiter or _RateLimiter(RATE_LIMIT_PER_MIN)})
     return cls((host, port), handler)

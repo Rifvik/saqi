@@ -1,5 +1,5 @@
 /* Saqi service worker: app works fully offline after first visit. Network-first for app files, cache fallback. */
-const CACHE = 'saqi-v27';
+const CACHE = 'saqi-v28';
 const FILES = [
   './', 'index.html', 'styles.css', 'js/data.js', 'js/engine.js', 'js/tools.js',
   'js/app.js', 'js/ai.js', 'js/hero-cinema.js', 'js/shader-bg.js',
@@ -12,6 +12,8 @@ self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Prom
 self.addEventListener('fetch', e => {
   const u = new URL(e.request.url);
   if (u.origin !== location.origin || e.request.method !== 'GET' || u.pathname.startsWith('/api/')) return; // forecasts in localStorage; AI routes live-only
-  e.respondWith(fetch(e.request).then(r => { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); return r; })
-    .catch(() => caches.match(e.request, { ignoreSearch: true })));
+  e.respondWith(fetch(e.request.url, { cache: 'no-cache' }).then(r => {
+    if (r && r.ok) { const copy = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copy)); }
+    return r;
+  }).catch(() => caches.match(e.request, { ignoreSearch: true })));
 });

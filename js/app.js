@@ -775,6 +775,7 @@ function showTab(id, instant = false) {
   });
   if (!instant && activeBtn && window.innerWidth > 960) activeBtn.closest('.nav-dd')?.querySelector('.nav-drop-btn') || activeBtn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
   if (id === 'farm' && typeof lmap !== 'undefined' && lmap) setTimeout(() => lmap.invalidateSize(), 80);
+  if (id === 'adviser' && typeof refreshAdviserMap === 'function') setTimeout(refreshAdviserMap, 90);
   if (id === 'home' && window.HeroCinema) window.HeroCinema.refresh();
   if (id === 'assistant' && typeof aiOnShow === 'function') aiOnShow();
   const fab = $('#aiFab'); if (fab) fab.hidden = (id === 'assistant');

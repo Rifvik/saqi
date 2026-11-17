@@ -889,6 +889,13 @@ a{color:var(--primary)}
   background:var(--primary);color:var(--primary-foreground);border:2px solid #fff;
   font-family:var(--mono);font-size:.7rem;font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,0.35);cursor:grab;
 }
+.adv-map{height:380px}
+.adv-rank-pin{background:transparent;border:0}
+.adv-rank-pin span{
+  display:grid;place-items:center;width:18px;height:18px;border-radius:9999px;
+  background:#111827;color:#ffffff;border:1.5px solid #ffffff;
+  font-family:var(--mono);font-size:.66rem;font-weight:800;box-shadow:0 1px 4px rgba(0,0,0,0.45);
+}
 
 /* Whole-site Language Translator Popover & Google Banner Suppression */
 .lang-popover{width:min(360px,calc(100vw - 1.5rem))}
