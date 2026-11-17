@@ -172,6 +172,8 @@ body{
   box-shadow:0 4px 12px -4px oklch(0.39 0.085 155 / 0.55);
 }
 .nav-ai-link:not(.active){background:var(--secondary);color:var(--primary);border-color:var(--glass-border)}
+@media(min-width:961px) and (max-width:1100px){.nav-link,.main-links>button{padding:.4rem .52rem}.main-links{gap:.12rem}}
+@media(min-width:961px) and (max-width:1040px){.header-actions .header-cta{display:none}}
 .nav-drop-btn .chev{transition:transform .2s var(--spring)}
 .nav-drop-btn[aria-expanded="true"] .chev{transform:rotate(180deg)}
 
